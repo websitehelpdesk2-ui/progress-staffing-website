@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Background Disclosure Notice | Progress Staffing Agency</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #173229;
+      --muted: #51675d;
+      --line: #c8d8cf;
+      --paper: #f7fbf8;
+      --panel: #ffffff;
+      --accent: #2e6b52;
+      --accent-soft: #e4f1ea;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: Georgia, "Times New Roman", serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(46, 107, 82, 0.12), transparent 28%),
+        linear-gradient(180deg, #eef5f0 0%, var(--paper) 32%, #f9fcfa 100%);
+      line-height: 1.55;
+    }
+
+    .shell {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 32px 20px 56px;
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 22px;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    .button {
+      appearance: none;
+      border: 1px solid var(--accent);
+      background: var(--accent);
+      color: #fff;
+      text-decoration: none;
+      padding: 10px 16px;
+      border-radius: 999px;
+      font: 600 14px/1.2 Arial, sans-serif;
+      cursor: pointer;
+    }
+
+    .button--ghost {
+      background: var(--panel);
+      color: var(--accent);
+    }
+
+    .document {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      padding: 36px 34px;
+      box-shadow: 0 24px 80px rgba(24, 57, 43, 0.08);
+    }
+
+    .eyebrow {
+      display: inline-block;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font: 700 12px/1 Arial, sans-serif;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 14px;
+    }
+
+    h1, h2 { margin: 0 0 14px; }
+
+    h1 {
+      font-size: clamp(30px, 5vw, 44px);
+      line-height: 1.05;
+    }
+
+    h2 {
+      font-size: 20px;
+      margin-top: 28px;
+      padding-top: 20px;
+      border-top: 1px solid var(--line);
+    }
+
+    p, li { font-size: 16px; }
+
+    .meta {
+      color: var(--muted);
+      font: 600 13px/1.4 Arial, sans-serif;
+      margin-bottom: 24px;
+    }
+
+    .callout {
+      padding: 16px 18px;
+      border-left: 4px solid var(--accent);
+      background: #f4faf6;
+      margin: 20px 0 8px;
+    }
+
+    ul {
+      margin: 12px 0 0 22px;
+      padding: 0;
+    }
+
+    .signature-block {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 18px;
+      margin-top: 28px;
+    }
+
+    .signature-line {
+      border-top: 1px solid var(--ink);
+      padding-top: 8px;
+      min-height: 54px;
+    }
+
+    @media print {
+      body {
+        background: #fff;
+      }
+
+      .shell {
+        max-width: none;
+        padding: 0;
+      }
+
+      .toolbar {
+        display: none;
+      }
+
+      .document {
+        border: 0;
+        border-radius: 0;
+        box-shadow: none;
+        padding: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="toolbar">
+      <button class="button" type="button" onclick="window.print()">Print Notice</button>
+      <a class="button button--ghost" href="/portal-employee">Return to Employee Portal</a>
+    </div>
+
+    <article class="document">
+      <div class="eyebrow">Universal Employee Notice</div>
+      <h1>Background Disclosure and Authorization Notice</h1>
+      <div class="meta">Progress Staffing Agency | Employee copy | Version 1 | March 2026</div>
+
+      <p>
+        Progress Staffing Agency may obtain consumer reports and investigative consumer reports about you for employment purposes, to the extent permitted by applicable federal, state, and local law. This notice is provided so you can review the disclosure before you sign the electronic background acknowledgment and consent form in the employee portal.
+      </p>
+
+      <div class="callout">
+        By completing the portal consent form, you authorize lawful background screening related to hiring, assignment placement, reassignment, retention, and other employment-related decisions.
+      </div>
+
+      <h2>What May Be Reviewed</h2>
+      <p>Depending on the role, client requirements, and applicable law, the screening process may include one or more of the following:</p>
+      <ul>
+        <li>Identity verification</li>
+        <li>Criminal history searches</li>
+        <li>Employment history verification</li>
+        <li>Education verification</li>
+        <li>Professional license or certification checks</li>
+        <li>Motor vehicle records, where driving is job-related</li>
+        <li>Other job-related screening permitted by law</li>
+      </ul>
+
+      <h2>Your Rights</h2>
+      <p>
+        You may have rights under the Fair Credit Reporting Act and applicable state laws, including rights to receive additional disclosures, request information about the reporting agency used, dispute inaccurate information, and receive pre-adverse and adverse action notices when required by law.
+      </p>
+
+      <h2>Important Notes</h2>
+      <ul>
+        <li>This notice is intended to accompany the electronic consent collected in the employee portal.</li>
+        <li>The portal consent applies to the maximum extent permitted by law for employment-related background screening.</li>
+        <li>If state or local law requires additional stand-alone notices or authorizations, Progress Staffing Agency may provide them separately.</li>
+        <li>You should print or save a copy of this notice for your records.</li>
+      </ul>
+
+      <h2>Employee Record Copy</h2>
+      <p>
+        The employee portal stores the legal name, typed signature, and signed date associated with your electronic background acknowledgment and consent. Agency staff may review that status during onboarding.
+      </p>
+
+      <div class="signature-block">
+        <div class="signature-line">Employee Name</div>
+        <div class="signature-line">Signature / E-Signature</div>
+        <div class="signature-line">Date</div>
+      </div>
+    </article>
+  </div>
+</body>
+</html>

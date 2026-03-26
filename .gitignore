@@ -1,0 +1,13 @@
+# Operating system files
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules/
+
+# Logs
+*.log
+
+# IDE
+.vscode/*
+!.vscode/settings.json

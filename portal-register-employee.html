@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Employee Registration - Progress Staffing Agency</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="apple-touch-icon" href="img.png" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="container header-inner">
+      <a class="logo" href="index.html">
+        <img class="logo__img" src="img.png" alt="Progress Staffing Agency" />
+        <span class="logo__text">Progress Staffing Agency</span>
+      </a>
+      <nav class="nav" aria-label="Portal navigation">
+        <a href="/portal-register">Back</a>
+        <a href="index.html">Home</a>
+        <a href="portal-login.html">Portal Login</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="section section--alt">
+      <div class="container">
+        <h1>Employee Registration</h1>
+        <p class="section-subtitle">Create your employee account for shift pickup, onboarding, and messaging.</p>
+
+        <form id="portalRegisterForm" class="contact-form" novalidate>
+          <div id="portalRegisterMessage" class="form-message" aria-live="polite"></div>
+          <div id="employeeApplicationSummary" class="portal-section portal-section--compact" hidden>
+            <div class="portal-section__header portal-section__header--sm">
+              <h2 class="portal-section__title portal-section__title--sm">Application Received</h2>
+            </div>
+            <p id="employeeApplicationSummaryText" class="section-subtitle section-subtitle--flush">Finish setting your portal password to complete account setup.</p>
+          </div>
+
+          <input id="registerRole" name="role" type="hidden" value="employee" />
+
+          <div id="registerDetails">
+            <div class="form-name-group">
+              <div class="form-row employee-application-prefill">
+                <label for="registerFirstName">First Name</label>
+                <input id="registerFirstName" name="firstName" type="text" required placeholder="Jane" autocomplete="given-name" />
+              </div>
+              <div class="form-row employee-application-prefill">
+                <label for="registerMiddleInitial">Middle Initial <span class="admin-optional-text">(optional)</span></label>
+                <input id="registerMiddleInitial" name="middleInitial" type="text" maxlength="1" placeholder="M" autocomplete="additional-name" />
+              </div>
+              <div class="form-row employee-application-prefill">
+                <label for="registerLastName">Last Name</label>
+                <input id="registerLastName" name="lastName" type="text" required placeholder="Doe" autocomplete="family-name" />
+              </div>
+            </div>
+
+            <div class="form-row employee-application-prefill">
+              <label for="registerEmail">Email</label>
+              <input id="registerEmail" name="email" type="email" required placeholder="you@example.com" />
+            </div>
+
+            <div class="form-row">
+              <label for="registerPassword">Password</label>
+              <input id="registerPassword" name="password" type="password" minlength="8" required placeholder="At least 8 characters" />
+            </div>
+
+            <div class="form-row">
+              <label for="registerPasscode">4-Digit Passcode <span class="admin-optional-text">(optional for quick sign-in and shift confirmations)</span></label>
+              <input id="registerPasscode" name="passcode" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="1234" />
+            </div>
+
+            <div class="form-row employee-application-prefill">
+              <label for="registerPhone">Phone</label>
+              <input id="registerPhone" name="phone" type="tel" inputmode="numeric" maxlength="14" placeholder="(555) 555-1234" />
+            </div>
+
+            <div class="form-row employee-application-prefill">
+              <label for="registerAddress">Address</label>
+              <input id="registerAddress" name="address" type="text" placeholder="Street address" />
+            </div>
+
+            <div class="form-row employee-application-prefill">
+              <label for="registerCity">City</label>
+              <input id="registerCity" name="city" type="text" placeholder="City" />
+            </div>
+
+            <div class="form-row employee-application-prefill">
+              <label for="registerState">State</label>
+              <input id="registerState" name="state" type="text" maxlength="2" placeholder="State (ex: NV)" />
+            </div>
+
+            <div class="form-row employee-application-prefill">
+              <label for="registerZip">Zip Code</label>
+              <input id="registerZip" name="zip" type="text" inputmode="numeric" maxlength="10" placeholder="Zip code" />
+            </div>
+
+            <div class="form-row employee-direct-selection">
+              <label for="registerIndustryTrack">Industry</label>
+              <select id="registerIndustryTrack" name="industryTrack" required>
+                <option value="">Select industry</option>
+                <option value="warehouse">Warehouse Industry</option>
+                <option value="healthcare">Healthcare Industry</option>
+              </select>
+            </div>
+
+            <div class="form-row employee-direct-selection">
+              <label for="registerPositionChoice">Position</label>
+              <select id="registerPositionChoice" name="positionChoice" required>
+                <option value="">Select industry first</option>
+              </select>
+            </div>
+
+            <div class="form-row employee-application-prefill">
+              <label for="registerCertifyAgreement" class="certify-label">Certification Statement (Required)</label>
+              <p class="disclaimer certify-disclaimer">
+                I certify that the facts set forth in this application for Employment are true and complete to the best of my knowledge. I understand that if I am employed, false statements, omissions or misinterpretations may result in my dismissal. I authorize the Employer to make an investigation of any of the facts set forth in this application and release the employer any liability. The Employer may contact any listed references on this application. I acknowledge and understand that the company is an "at will" employer. Therefore, any employee (regular, temporary, or other type of category employee) may resign at any time, just as the employer may terminate the employment relationship with any employee at any time, with or without cause, with or without notice to the other party.
+              </p>
+              <label class="certify-check-label">
+                <input id="registerCertifyAgreement" name="certifyAgreement" type="checkbox" required class="certify-checkbox" />
+                <span>I have read and agree to the certification statement above.</span>
+              </label>
+            </div>
+
+            <div class="form-actions">
+              <button class="button" type="submit">Create Account</button>
+              <p class="disclaimer">Already have an account? <a class="link" href="/portal-login">Sign in</a>.</p>
+              <p class="disclaimer"><a class="link" href="/portal-register">Back to registration options</a></p>
+            </div>
+          </div>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <script src="theme.js"></script>
+  <script src="portal.js?v=20260315-6"></script>
+</body>
+</html>

@@ -1,0 +1,32 @@
+{
+  "name": "progress-staffing-agency",
+  "version": "1.0.0",
+  "description": "Static marketing site with a simple worker portal backend for Progress Staffing Agency.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "keywords": [
+    "staffing",
+    "portal",
+    "warehouse",
+    "healthcare"
+  ],
+  "author": "Progress Staffing Agency",
+  "license": "MIT",
+  "dependencies": {
+    "@simplewebauthn/server": "^13.3.0",
+    "better-sqlite3": "^12.1.0",
+    "express": "^4.18.2",
+    "express-rate-limit": "^8.3.1",
+    "helmet": "^8.1.0",
+    "multer": "^2.0.2",
+    "nodemailer": "^8.0.2",
+    "twilio": "^5.13.0",
+    "web-push": "^3.6.7"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}

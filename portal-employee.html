@@ -1,0 +1,971 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Employee Dashboard - Progress Staffing Agency</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="img.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-portal-page="employee" class="portal-page">
+  <header class="site-header">
+    <div class="container header-inner">
+      <a class="logo" href="index.html">
+        <img class="logo__img" src="img.png" alt="Progress Staffing Agency" />
+        <span class="logo__text">Employee Dashboard</span>
+      </a>
+      <div class="portal-header-actions">
+        <button id="portalThemeToggleBtn" class="button button--ghost button--sm" type="button">Switch to Dark Mode</button>
+        <button id="portalLogoutBtn" class="button button--sm" type="button">Log Out</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="portal-welcome">
+    <div class="container">
+      <h1 id="portalGreeting">Employee Dashboard</h1>
+      <div class="portal-welcome__meta">
+        <p id="portalSubtitle">Welcome back. Here's your profile and onboarding status.</p>
+        <span id="portalIndustry" class="badge badge--blue portal-welcome__badge">—</span>
+      </div>
+    </div>
+  </div>
+
+  <main>
+    <div class="container portal-main-shell--lg">
+
+      <!-- Stat row -->
+      <div class="stat-row" id="employeeStatRow">
+        <div class="stat-card"><span class="stat-card__label">Registered Roles</span><span class="stat-card__value" id="statApplications">—</span></div>
+        <div class="stat-card"><span class="stat-card__label">Documents</span><span class="stat-card__value" id="statDocuments">—</span></div>
+        <div class="stat-card"><span class="stat-card__label">Profile Complete</span><span class="stat-card__value" id="statComplete">—</span></div>
+        <div class="stat-card"><span class="stat-card__label">Accepted Shifts</span><span class="stat-card__value" id="statAssignments">—</span></div>
+      </div>
+
+      <div class="portal-section">
+        <div class="portal-section__header">
+          <h2 class="portal-section__title">Notifications</h2>
+        </div>
+        <div id="portalNotificationStatus" class="form-message" aria-live="polite"></div>
+        <p id="portalNotificationDescription" class="admin-section-copy">Enable browser notifications to receive alerts when your uploaded documents are approved or denied by an administrator.</p>
+        <div class="form-actions admin-notification-actions">
+          <button id="portalNotificationEnableBtn" class="button button--ghost button--sm" type="button">Enable Push Notifications</button>
+        </div>
+        <div class="notify-prefs-block">
+          <p class="notify-prefs-block__heading">Notification Channels</p>
+          <div class="form-row notify-toggle-row">
+            <span class="notify-toggle__label">Email Notifications</span>
+            <label class="toggle-switch" for="portalNotifyEmailEnabled">
+              <input id="portalNotifyEmailEnabled" name="notifyEmailEnabled" type="checkbox" aria-label="Email notifications" title="Email notifications" />
+              <span class="toggle-switch__track"></span>
+            </label>
+          </div>
+          <div class="form-row notify-toggle-row">
+            <span class="notify-toggle__label">Text Notifications</span>
+            <label class="toggle-switch" for="portalNotifySmsEnabled">
+              <input id="portalNotifySmsEnabled" name="notifySmsEnabled" type="checkbox" aria-label="Text notifications" title="Text notifications" />
+              <span class="toggle-switch__track"></span>
+            </label>
+          </div>
+          <div class="form-row notify-toggle-row">
+            <span class="notify-toggle__label">App Push Notifications</span>
+            <label class="toggle-switch" for="portalNotifyPushEnabled">
+              <input id="portalNotifyPushEnabled" name="notifyPushEnabled" type="checkbox" aria-label="App push notifications" title="App push notifications" />
+              <span class="toggle-switch__track"></span>
+            </label>
+          </div>
+        </div>
+<div class="admin-inline-row admin-inline-row--end">
+    <button id="portalNotificationsClearReadBtn" class="button button--ghost button--sm" type="button">Clear Read</button>
+  </div>
+  <div class="portal-table-wrap admin-table-wrap-top">
+    <table class="portal-table">
+      <thead><tr><th>When</th><th>Type</th><th>Activity</th><th>Status</th><th>Action</th><th></th></tr></thead>
+      <tbody id="portalNotificationsList"><tr><td colspan="6">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="portal-section">
+        <div class="portal-section__header">
+          <h2 class="portal-section__title">Messages</h2>
+        </div>
+        <form id="portalMessageForm" class="contact-form admin-form-bottom" novalidate>
+          <div id="portalMessageStatus" class="form-message" aria-live="polite"></div>
+          <div class="form-row">
+            <label for="portalMessageRecipient">Recipient</label>
+            <select id="portalMessageRecipient" name="recipientUserId" required>
+              <option value="">Select recipient</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label for="portalMessageBody">Message</label>
+            <textarea id="portalMessageBody" name="body" rows="3" placeholder="Type your message"></textarea>
+          </div>
+          <div class="form-actions">
+            <button class="button" type="submit">Send Message</button>
+          </div>
+        </form>
+        <div id="portalMessagesList" class="portal-chat" aria-live="polite">
+          <div class="portal-chat__empty">Loading conversation...</div>
+        </div>
+      </div>
+
+      <!-- Profile -->
+      <div class="portal-section">
+        <div class="portal-section__header">
+          <h2 class="portal-section__title">My Profile</h2>
+          <button id="employeeProfileEditBtn" class="button button--ghost button--sm" type="button">Edit</button>
+        </div>
+        <div class="profile-info" id="employeeProfile"><p class="empty-state">Loading...</p></div>
+
+        <form id="employeeProfileEditForm" class="contact-form" novalidate hidden>
+          <div id="employeeProfileEditMessage" class="form-message" aria-live="polite"></div>
+          <div class="form-row">
+            <label for="employeeEditPhone">Phone</label>
+            <input id="employeeEditPhone" name="phone" type="tel" placeholder="(123) 456-7890" />
+          </div>
+          <div class="form-row">
+            <label for="employeeEditAddress">Street Address</label>
+            <input id="employeeEditAddress" name="address" type="text" placeholder="123 Main St" />
+          </div>
+          <div class="form-row">
+            <label for="employeeEditCity">City</label>
+            <input id="employeeEditCity" name="city" type="text" placeholder="Las Vegas" />
+          </div>
+          <div class="form-row">
+            <label for="employeeEditState">State</label>
+            <input id="employeeEditState" name="state" type="text" maxlength="2" placeholder="NV" />
+          </div>
+          <div class="form-row">
+            <label for="employeeEditZip">ZIP Code</label>
+            <input id="employeeEditZip" name="zip" type="text" inputmode="numeric" maxlength="10" placeholder="89101" />
+          </div>
+          <div class="form-row">
+            <label for="employeeEditSkills">Skills</label>
+            <input id="employeeEditSkills" name="skills" type="text" placeholder="Forklift, EMR, Patient transport" />
+          </div>
+          <div class="form-row">
+            <label for="employeeEditCertifications">Certifications</label>
+            <input id="employeeEditCertifications" name="certifications" type="text" placeholder="BLS, CNA" />
+          </div>
+          <div class="portal-btn-row">
+            <button type="submit" class="button">Save Profile</button>
+            <button id="employeeProfileEditCancel" type="button" class="button button--ghost">Cancel</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Assignments -->
+      <div class="portal-section">
+        <div class="portal-section__header">
+          <h2 class="portal-section__title">Current Shifts</h2>
+        </div>
+        <div id="employeeCurrentShiftMessage" class="form-message" aria-live="polite"></div>
+        <div id="employeeShiftCancelPanel" class="contact-form portal-cancel-panel">
+          <div id="employeeShiftCancelMessage" class="form-message" aria-live="polite"></div>
+          <input type="hidden" id="employeeShiftCancelAssignmentId" />
+          <div class="form-row">
+            <label for="employeeShiftCancelType">Cancellation Type</label>
+            <select id="employeeShiftCancelType">
+              <option value="non_medical">Non-Medical</option>
+              <option value="medical">Medical</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label for="employeeShiftCancelReason">Reason</label>
+            <textarea id="employeeShiftCancelReason" rows="2" placeholder="Reason for cancellation"></textarea>
+          </div>
+          <div class="form-row">
+            <label for="employeeShiftCancelDoctorNote">Doctor Note (required for medical emergency within 24 hours)</label>
+            <input id="employeeShiftCancelDoctorNote" type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" />
+          </div>
+          <div class="form-actions admin-form-actions-inline">
+            <button id="employeeShiftCancelSubmitBtn" class="button button--danger button--sm" type="button">Submit Cancellation</button>
+            <button id="employeeShiftCancelCloseBtn" class="button button--ghost button--sm" type="button">Close</button>
+          </div>
+        </div>
+        <div id="employeeCurrentAssignments"><p class="empty-state">Loading...</p></div>
+      </div>
+
+      <div class="portal-section">
+        <div class="portal-section__header">
+          <h2 class="portal-section__title">Past Shifts</h2>
+        </div>
+        <div id="employeePastAssignments"><p class="empty-state">Loading...</p></div>
+      </div>
+
+      <!-- No-Call-No-Show Documentation -->
+      <div class="portal-section" id="employeeNcnsSection">
+        <div class="portal-section__header">
+          <h2 class="portal-section__title">Absence Documentation Required</h2>
+        </div>
+        <p class="admin-section-copy">If you were marked as a no-call-no-show on a scheduled shift, you have <strong>24 hours from the end of that shift</strong> to submit documentation. Medical absences require an official doctor&rsquo;s note. Non-medical absences require a written explanation. Documentation submitted here is final and cannot be changed.</p>
+        <!-- NCNS documentation submission panel -->
+        <div id="employeeNcnsDocPanel" class="contact-form portal-ncns-panel">
+          <div id="employeeNcnsDocMessage" class="form-message" aria-live="polite"></div>
+          <input type="hidden" id="employeeNcnsAssignmentId" />
+          <p id="employeeNcnsDocShiftInfo" class="portal-ncns-shift-info"></p>
+          <div class="form-row">
+            <label for="employeeNcnsDocType">Absence Type</label>
+            <select id="employeeNcnsDocType">
+              <option value="non_medical">Non-Medical &mdash; Written Explanation</option>
+              <option value="medical">Medical &mdash; Doctor&rsquo;s Note Required</option>
+            </select>
+          </div>
+          <!-- Non-medical: reason text box -->
+          <div class="form-row" id="employeeNcnsReasonRow">
+            <label for="employeeNcnsReason">Explanation of Absence</label>
+            <textarea id="employeeNcnsReason" rows="4" placeholder="Provide a detailed explanation for your absence. This statement is final and will be shared with management."></textarea>
+          </div>
+          <!-- Medical: doctor's note upload + legal acknowledgment -->
+          <div id="employeeNcnsMedicalRow" class="portal-hidden">
+            <div class="form-row">
+              <label for="employeeNcnsDoctorNote">Doctor&rsquo;s Note (PDF, PNG, JPG, DOC)</label>
+              <input id="employeeNcnsDoctorNote" type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" />
+            </div>
+            <div class="form-row portal-attest-row">
+              <div class="portal-attest-flex">
+                <input id="employeeNcnsAcknowledge" type="checkbox" class="portal-attest-checkbox" />
+                <label for="employeeNcnsAcknowledge" class="portal-attest-label">
+                  <strong>Acknowledgment &amp; Attestation:</strong> I, the undersigned employee, hereby attest that the document uploaded above is a valid, authentic, and unaltered medical note issued by a licensed healthcare provider in connection with my absence on the date of the referenced shift. I understand that submission of a fraudulent, altered, or otherwise invalid document may result in disciplinary action up to and including termination of employment, and may expose me to legal liability. By checking this box, I electronically acknowledge and agree to the foregoing statement.
+                </label>
+              </div>
+            </div>
+          </div>
+          <div class="form-actions portal-form-actions-row-mt">
+            <button id="employeeNcnsDocSubmitBtn" class="button button--danger button--sm" type="button">Submit Documentation</button>
+            <button id="employeeNcnsDocCloseBtn" class="button button--ghost button--sm" type="button">Close</button>
+          </div>
+        </div>
+        <div id="employeeNcnsAssignmentsList"><p class="empty-state">Loading...</p></div>
+      </div>
+
+      <div class="portal-section">
+        <div class="portal-section__header">
+          <h2 class="portal-section__title">Open Shifts</h2>
+        </div>
+        <div id="employeeOpenShiftMessage" class="form-message" aria-live="polite"></div>
+        <p class="admin-section-copy">New matching shifts are posted here automatically. Accepting closes the shift. Declining hides it from your list until it is reposted again.</p>
+        <div class="portal-table-wrap">
+          <table class="portal-table">
+            <thead><tr><th>ID</th><th>Shift</th><th>Company</th><th>Schedule</th><th>Pay</th><th>Action</th></tr></thead>
+            <tbody id="employeeOpenShifts"><tr><td colspan="6">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="portal-section">
+        <div class="portal-section__header">
+          <h2 class="portal-section__title">Shift Offers</h2>
+        </div>
+        <div id="employeeShiftOfferMessage" class="form-message" aria-live="polite"></div>
+        <p class="admin-section-copy">If you withdraw from an accepted shift, it will reopen automatically. You can also privately offer the shift to another employee with the same registered title.</p>
+        <div class="portal-table-wrap">
+          <table class="portal-table">
+            <thead><tr><th>ID</th><th>Shift</th><th>From</th><th>Company</th><th>Status</th><th>Action</th></tr></thead>
+            <tbody id="employeeShiftOffers"><tr><td colspan="6">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Applications -->
+      <div class="portal-section">
+        <div class="portal-section__header">
+          <h2 class="portal-section__title">Submitted Applications</h2>
+        </div>
+        <div id="employeeApplicationMessage" class="form-message" aria-live="polite"></div>
+        <div class="portal-table-wrap">
+          <table class="portal-table">
+            <thead><tr><th>#</th><th>Position</th><th>Industry</th><th>Submitted</th><th>Certification</th><th>Action</th></tr></thead>
+            <tbody id="employeeApplications"><tr><td colspan="6">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Documents -->
+      <div class="portal-cols">
+        <div class="portal-section">
+          <div class="portal-section__header">
+            <h2 class="portal-section__title">Document Checklist</h2>
+          </div>
+          <ul class="checklist" id="employeeChecklist"><li>Loading...</li></ul>
+
+          <div class="portal-section__header portal-section__header--mt">
+            <h3 class="portal-section__title portal-section__title--sub">Uploaded Documents</h3>
+          </div>
+          <div class="portal-table-wrap">
+            <table class="portal-table">
+              <thead><tr><th>Type</th><th>File Name</th><th>Uploaded</th><th>Expires</th><th>Status</th></tr></thead>
+              <tbody id="employeeDocuments"><tr><td colspan="5">Loading...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="portal-section" id="employeeBackgroundFormSection">
+        <div class="portal-section__header">
+          <h2 class="portal-section__title">Background Form</h2>
+        </div>
+        <p class="portal-form-hint">When admin or onboarding sends you the background form, print it, complete it, and upload the finished form here for review.</p>
+        <div id="employeeBackgroundFormStatus" class="form-message form-message--neutral">No completed background form uploaded yet.</div>
+        <div class="form-actions">
+          <button id="employeeBackgroundFormUploadBtn" class="button button--ghost button--sm" type="button">Upload Completed Background Form</button>
+        </div>
+      </div>
+
+      <div class="portal-section" id="employeeUploadSection" hidden>
+        </div>
+
+        <div class="portal-section" id="employeeMiscDocsSection" hidden>
+          <div class="portal-section__header">
+            <h2 class="portal-section__title">Documents from Agency</h2>
+          </div>
+          <p class="portal-form-hint">Important documents sent to you by the agency.</p>
+          <div class="portal-table-wrap">
+            <table class="portal-table">
+              <thead><tr><th>File</th><th>Description</th><th>Received</th></tr></thead>
+              <tbody id="employeeMiscDocsTbody"><tr><td colspan="3">Loading...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="portal-section" id="employeeUploadSection" hidden>
+        <div class="portal-section__header">
+          <h2 class="portal-section__title">Upload Document</h2>
+        </div>
+        <form id="employeeDocumentForm" class="contact-form" novalidate>
+          <div id="employeeDocumentMessage" class="form-message" aria-live="polite"></div>
+          <div class="form-row">
+            <label for="employeeDocumentType">Document Type</label>
+            <select id="employeeDocumentType" name="documentType" required>
+              <option value="">Loading options...</option>
+            </select>
+          </div>
+          <div id="employeeSsnVerificationFields" hidden>
+            <div class="form-row">
+              <label for="employeeDocumentSsn">Social Security Number</label>
+              <input id="employeeDocumentSsn" name="ssn" type="password" inputmode="numeric" maxlength="11" placeholder="123-45-6789" autocomplete="off" />
+            </div>
+            <div class="form-row portal-form-row--mt-xs">
+              <label class="portal-acknowledgement-label" for="employeeDocumentSsnConfirm">
+                <input id="employeeDocumentSsnConfirm" name="ssnConfirm" type="checkbox" class="portal-acknowledgement-checkbox" />
+                <span>I hereby certify, under penalty of disciplinary action, that the Social Security number submitted is true, complete, and issued to me by the Social Security Administration. I understand that any false statement, misrepresentation, or use of another person&apos;s Social Security number constitutes fraud and may result in immediate suspension or termination of platform access, termination of employment or assignment eligibility with Progress Staffing Agency, and referral to appropriate authorities as permitted by applicable law.</span>
+              </label>
+            </div>
+          </div>
+          <div class="form-row">
+            <label id="employeeExpirationDateLabel" for="employeeDocumentExpirationDate">Expiration Date <span class="admin-optional-text">(required for TB screening, license, CPR/BLS, abuse training)</span></label>
+            <input id="employeeDocumentExpirationDate" name="expirationDate" type="date" />
+          </div>
+          <div class="form-row">
+            <label for="employeeDocumentFile">Choose File</label>
+            <input id="employeeDocumentFile" name="document" type="file" required />
+          </div>
+          <input type="hidden" id="employeeApplicationId" name="applicationId" />
+          <div class="form-actions">
+            <button class="button" type="submit">Upload Document</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="portal-section" id="employeeTrainingSection" hidden>
+        <div class="portal-section__header">
+          <h2 class="portal-section__title">Employee Trainings</h2>
+        </div>
+        <p class="portal-section-info">
+          <strong>Note:</strong> Employees are responsible for payment of CPR and Mandatory Reporter Training courses if applicable.
+        </p>
+        <p class="portal-section-info">
+          Healthcare workers can use these training resources to stay current on required certifications and mandatory reporter coursework.
+        </p>
+        <div class="portal-training-grid">
+          <article class="portal-training-card">
+            <div class="portal-training-card__eyebrow">Certificate</div>
+            <h3 class="portal-training-card__title">BLS / CPR</h3>
+            <p class="portal-training-card__body">
+              Keep your BLS/CPR certification current. After renewal, upload your certificate to your healthcare document checklist for review.
+              <br><br>
+              <a href="https://shopcpr.heart.org/heartcode-bls" target="_blank" rel="noopener" class="button button--ghost button--sm portal-training-btn">Access HeartCode BLS Training</a>
+            </p>
+            <div class="form-actions admin-form-actions-inline">
+              <button id="employeeWeeklyTimesheetSubmitBtn" class="button" type="submit">Submit for Approval</button>
+              <button class="button button--ghost button--sm" type="button" data-checklist-upload-type="cpr_bls_certificate">Upload BLS/CPR Certificate</button>
+            </div>
+          </article>
+
+          <article class="portal-training-card portal-training-card--wide">
+            <div class="portal-training-card__eyebrow">Required Course</div>
+            <h3 class="portal-training-card__title">Mandatory Reporter Training</h3>
+            <p class="portal-training-card__body">
+              The Iowa HHS Learning Management System moved to a new platform.
+            </p>
+            <p class="portal-training-card__body">
+              All learners must start by <a class="link" href="https://wd5.myworkday.com/wday/vps/wday/calypso/bootstrap/eex/requestuserbootstrap/stateofiowa/48a3611b50fd100174115e163ad30000" target="_blank" rel="noopener">registering for a Workday account</a> to create and connect your Workday account.
+            </p>
+            <ul class="portal-training-links">
+              <li><a class="link" href="https://das.iowa.gov/media/4355/download?inline" target="_blank" rel="noopener">How to Create, Connect and Unlock a Workday Account</a></li>
+              <li><a class="link" href="https://wd5-identity.myworkday.com/wday/authgwy/stateofiowa/upc/login?redirect=n" target="_blank" rel="noopener">Log in to Workday</a> after registering.</li>
+              <li><a class="link" href="https://hhs.iowa.gov/media/14397/download?inline" target="_blank" rel="noopener">Workday Learning Resources</a> (You must be logged in to Workday Learning to view.)</li>
+              <li><a class="link" href="https://wd5-identity.myworkday.com/wday/authgwy/stateofiowa/upc/login" target="_blank" rel="noopener">Mandatory Reporter Help Guide</a></li>
+              <li><a class="link" href="https://wd5-identity.myworkday.com/wday/authgwy/stateofiowa/upc/login" target="_blank" rel="noopener">Search and Enroll for Mandatory Reporters</a></li>
+              <li><a class="link" href="https://wd5-identity.myworkday.com/wday/authgwy/stateofiowa/upc/login" target="_blank" rel="noopener">Print My Certificate</a></li>
+              <li>For additional questions, view our Workday Learning FAQ and Resources.</li>
+              <li>If you have technical questions or issues regarding Mandatory Reporter training, email <a class="link" href="mailto:MandatoryReporter@dhs.state.ia.us">MandatoryReporter@dhs.state.ia.us</a></li>
+              <li><a class="link" href="https://wd5-identity.myworkday.com/wday/authgwy/stateofiowa/upc/login" target="_blank" rel="noopener">DS 168 Dependent Adult Abuse Mandatory Reporter Training (English)</a> is available.</li>
+            </ul>
+            <div class="portal-training-card__eyebrow portal-training-eyebrow--mt">Other States</div>
+            <p class="portal-training-card__body">
+              If you are not in Iowa, please use the following link for your mandatory reporter training:
+              <a class="link" href="https://reliasacademy.com/rls/store/courses/identifying-and-addressing-dependent-and-older-adult-abuse/_/A-product-c1772308?utm_source=chatgpt.com" target="_blank" rel="noopener">Identifying and Addressing Dependent and Older Adult Abuse (Relias Academy)</a>
+            </p>
+          </article>
+        </div>
+      </div>
+
+      <div class="portal-section">
+        <div class="portal-section__header">
+          <h2 class="portal-section__title">Download/Print Timesheet</h2>
+        </div>
+        <p class="portal-section-info">
+          Download the paper timesheet PDF to fill out by hand, or preview it below.
+        </p>
+        <div class="portal-iframe-wrap">
+          <iframe
+            title="Timesheet Preview"
+            src="/api/portal/employee/timesheet/preview"
+            class="portal-iframe"
+            loading="lazy"
+          ></iframe>
+        </div>
+        <div class="form-actions admin-form-actions-inline">
+          <a href="/api/portal/employee/timesheet" class="button">Download/Print Timesheet PDF</a>
+        </div>
+      </div>
+
+      <div class="portal-section" data-tile-title="Submit Timesheet">
+        <div class="portal-section__header">
+          <h2 class="portal-section__title">Weekly Timesheet Summary</h2>
+        </div>
+        <p class="portal-section-info">
+          After clocking in and out, submit your hours for jobsite approval. Approved timesheets are used for billing and payroll.
+        </p>
+
+        <!-- Submitted timesheets list -->
+        <div class="portal-table-wrap portal-ts-top-wrap">
+          <table class="portal-table">
+            <thead><tr><th>Period</th><th>Shift</th><th>Company</th><th>Total Hours</th><th>Submitted By</th><th>Source</th><th>Status</th><th>Signature</th></tr></thead>
+            <tbody id="employeeTimesheetsTbody"><tr><td colspan="8">Loading...</td></tr></tbody>
+          </table>
+        </div>
+
+        <!-- Weekly Timesheet Form -->
+        <div class="portal-ts-divider">
+          <div id="employeeWeeklyTimesheetMessage" class="form-message" aria-live="polite"></div>
+          <form id="employeeWeeklyTimesheetForm" class="contact-form portal-flat-form" novalidate>
+
+            <!-- Period + Assignment header row -->
+            <div class="portal-ts-period-grid">
+              <div class="form-row">
+                <label for="employeeWeeklyAssignment">Assignment / Shift</label>
+                <select id="employeeWeeklyAssignment" name="assignmentId" required>
+                  <option value="">Select assignment…</option>
+                </select>
+              </div>
+              <div class="form-row">
+                <label for="employeeWeeklyPeriodStart">Period Start (Monday)</label>
+                <input id="employeeWeeklyPeriodStart" name="periodStart" type="date" required />
+              </div>
+              <div class="form-row">
+                <label for="employeeWeeklyPeriodEnd">Period End (Sunday)</label>
+                <input id="employeeWeeklyPeriodEnd" name="periodEnd" type="date" readonly class="portal-ts-readonly" />
+              </div>
+            </div>
+
+            <!-- 7-day entries table -->
+            <div class="portal-table-wrap portal-ts-days-wrap">
+              <table class="portal-table portal-weekly-ts-table">
+                <thead>
+                  <tr>
+                    <th class="portal-ts-col-date">Date</th>
+                    <th>Start Time</th>
+                    <th>End Time</th>
+                    <th>Lunch/Break</th>
+                    <th class="portal-ts-col-hrs">Net Hrs</th>
+                  </tr>
+                </thead>
+                <tbody id="employeeWeeklyTsDaysTbody">
+                  <tr><td colspan="5" class="portal-ts-empty-cell">Select a period start date (Monday) to load the weekly schedule.</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="portal-ts-add-btn-wrap">
+              <button id="employeeWeeklyAddRowBtn" class="button button--ghost" type="button">+ Add Another Row</button>
+            </div>
+
+            <!-- Required paper upload for manual timesheet submission -->
+            <div class="form-row portal-form-row--max520">
+              <label for="employeeWeeklyFile">Paper Timesheet <span class="admin-optional-text">(required for manual entry submission)</span></label>
+              <input id="employeeWeeklyFile" name="timesheetFile" type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" required />
+            </div>
+            <div class="form-row portal-form-row--max520">
+              <label for="employeeWeeklyNotes">Notes <span class="admin-optional-text">(optional)</span></label>
+              <textarea id="employeeWeeklyNotes" name="notes" rows="2" placeholder="Optional note for the jobsite reviewer…"></textarea>
+            </div>
+            <div class="form-actions admin-form-actions-inline">
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <div class="portal-section">
+        <div class="portal-section__header">
+          <h2 class="portal-section__title">Clock In / Out</h2>
+        </div>
+        <div id="employeeClockMessage" class="form-message" aria-live="polite"></div>
+        <p class="admin-section-copy">Clock in and out when you are at your assigned jobsite.</p>
+        <div class="contact-form portal-flat-form">
+          <div class="form-row">
+            <label for="employeeClockAssignment">Assigned Shift</label>
+            <select id="employeeClockAssignment">
+              <option value="">Loading assigned shifts...</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label for="employeeClockStatusText">Current Status</label>
+            <input id="employeeClockStatusText" type="text" value="Not clocked in" readonly />
+          </div>
+          <div class="form-actions admin-form-actions-inline">
+            <button id="employeeClockInBtn" class="button" type="button">Clock In</button>
+            <button id="employeeClockOutBtn" class="button button--ghost" type="button">Clock Out</button>
+          </div>
+        </div>
+        <div class="portal-section__header portal-section__header--mt">
+          <h3 class="portal-section__title portal-section__title--sub">Recent Punches</h3>
+        </div>
+        <div class="portal-table-wrap">
+          <table class="portal-table">
+            <thead><tr><th>Shift</th><th>Company</th><th>Clock In</th><th>Clock Out</th><th>Hours</th></tr></thead>
+            <tbody id="employeeClockEntries"><tr><td colspan="5">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- SSN Section -->
+      <div class="portal-section" id="employeeSsnSection" hidden>
+        <div class="portal-section__header">
+          <h2 class="portal-section__title">Social Security Number</h2>
+        </div>
+        <div id="employeeSsnOnFileDisplay" class="portal-ssn-onfile-wrap">
+          <p class="portal-ssn-stored-note">Your SSN is securely stored.</p>
+          <div class="portal-ssn-display-row">
+            <span id="employeeSsnMasked" class="portal-ssn-masked">&#9679;&#9679;&#9679;-&#9679;&#9679;-&#9679;&#9679;&#9679;&#9679;</span>
+            <button type="button" class="button button--ghost button--sm" id="employeeSsnViewBtn">View</button>
+            <button type="button" class="button button--ghost button--sm portal-hidden" id="employeeSsnHideBtn">Hide</button>
+          </div>
+        </div>
+        <form id="employeeSsnForm" class="contact-form portal-ssn-form" novalidate>
+          <div id="employeeSsnMessage" class="form-message" aria-live="polite"></div>
+          <div class="form-row">
+            <label for="employeeSsnInput">Social Security Number</label>
+            <input id="employeeSsnInput" name="ssn" type="password" inputmode="numeric" maxlength="11" placeholder="123-45-6789" autocomplete="off" />
+          </div>
+          <div class="form-actions">
+            <button id="employeeSsnSaveBtn" class="button" type="submit">Save SSN</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Tax Forms -->
+      <div class="portal-section">
+        <div class="portal-section__header">
+          <h2 class="portal-section__title">Tax Forms</h2>
+        </div>
+        <!-- Tab switcher -->
+        <div class="portal-tax-tabs" role="tablist">
+          <button type="button" role="tab" class="portal-tax-tab portal-tax-tab--active" id="taxTabW4Btn" aria-controls="taxFormW4Panel" aria-selected="true">Form W-4</button>
+          <button type="button" role="tab" class="portal-tax-tab" id="taxTabW9Btn" aria-controls="taxFormW9Panel" aria-selected="false">Form W-9</button>
+        </div>
+        <!-- W-4 Panel -->
+        <div id="taxFormW4Panel">
+          <form id="employeeW4Form" class="contact-form" novalidate>
+            <div id="employeeW4Message" class="form-message" aria-live="polite"></div>
+            <div class="portal-auto-grid">
+              <div class="form-row">
+                <label for="w4LegalName">Legal Name</label>
+                <input id="w4LegalName" name="legalName" type="text" required placeholder="Jane Doe" />
+              </div>
+              <div class="form-row">
+                <label for="w4AddressLine">Address</label>
+                <input id="w4AddressLine" name="addressLine" type="text" placeholder="123 Main St" />
+              </div>
+              <div class="form-row">
+                <label for="w4CityStateZip">City, State, Zip</label>
+                <input id="w4CityStateZip" name="cityStateZip" type="text" placeholder="Las Vegas, NV 89148" />
+              </div>
+              <div class="form-row">
+                <label for="w4FilingStatus">Filing Status</label>
+                <select id="w4FilingStatus" name="filingStatus">
+                  <option value="">Select status</option>
+                  <option value="single">Single</option>
+                  <option value="married_filing_jointly">Married Filing Jointly</option>
+                  <option value="head_of_household">Head of Household</option>
+                </select>
+              </div>
+              <div class="form-row">
+                <label for="w4MultipleJobs">Multiple Jobs?</label>
+                <select id="w4MultipleJobs" name="multipleJobs">
+                  <option value="0">No</option>
+                  <option value="1">Yes</option>
+                </select>
+              </div>
+              <div class="form-row">
+                <label for="w4DependentsAmount">Dependents Amount ($)</label>
+                <input id="w4DependentsAmount" name="dependentsAmount" type="number" step="0.01" placeholder="0.00" />
+              </div>
+              <div class="form-row">
+                <label for="w4OtherIncome">Other Income ($)</label>
+                <input id="w4OtherIncome" name="otherIncome" type="number" step="0.01" placeholder="0.00" />
+              </div>
+              <div class="form-row">
+                <label for="w4Deductions">Deductions ($)</label>
+                <input id="w4Deductions" name="deductions" type="number" step="0.01" placeholder="0.00" />
+              </div>
+              <div class="form-row">
+                <label for="w4ExtraWithholding">Extra Withholding ($)</label>
+                <input id="w4ExtraWithholding" name="extraWithholding" type="number" step="0.01" placeholder="0.00" />
+              </div>
+              <div class="form-row">
+                <label for="w4SignatureName">Signature (type full legal name)</label>
+                <input id="w4SignatureName" name="signatureName" type="text" required placeholder="Jane Doe" />
+              </div>
+              <div class="form-row">
+                <label for="w4SignedDate">Date Signed</label>
+                <input id="w4SignedDate" name="signedDate" type="date" required />
+              </div>
+            </div>
+            <div class="form-actions portal-form-actions-mt">
+            </div>
+          </form>
+        </div>
+        <!-- W-9 Panel -->
+        <div id="taxFormW9Panel" hidden>
+          <p class="portal-form-hint">Complete this form if you work as an independent contractor or are self-employed. Provide your Taxpayer Identification Number (TIN) so Progress Staffing Agency can report payments to the IRS.</p>
+          <form id="employeeW9Form" class="contact-form" novalidate>
+            <div id="employeeW9Message" class="form-message" aria-live="polite"></div>
+            <div class="portal-auto-grid">
+              <div class="form-row">
+                <label for="w9Name">Name (as shown on income tax return)</label>
+                <input id="w9Name" name="name" type="text" required placeholder="Jane Doe" />
+              </div>
+              <div class="form-row">
+                <label for="w9BusinessName">Business Name / Disregarded Entity (optional)</label>
+                <input id="w9BusinessName" name="businessName" type="text" placeholder="ACME LLC" />
+              </div>
+              <div class="form-row">
+                <label for="w9TaxClassification">Federal Tax Classification</label>
+                <select id="w9TaxClassification" name="taxClassification" required>
+                  <option value="">Select classification</option>
+                  <option value="individual_sole_proprietor">Individual / Sole Proprietor / Single-Member LLC</option>
+                  <option value="c_corporation">C Corporation</option>
+                  <option value="s_corporation">S Corporation</option>
+                  <option value="partnership">Partnership</option>
+                  <option value="trust_estate">Trust / Estate</option>
+                  <option value="llc">Limited Liability Company (LLC)</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div class="form-row" id="w9LlcTypeRow" hidden>
+                <label for="w9LlcType">LLC Type (C = C corp, S = S corp, P = Partnership)</label>
+                <select id="w9LlcType" name="llcType">
+                  <option value="">Select LLC type</option>
+                  <option value="C">C</option>
+                  <option value="S">S</option>
+                  <option value="P">P</option>
+                </select>
+              </div>
+              <div class="form-row" id="w9OtherClassificationRow" hidden>
+                <label for="w9OtherClassification">Other Classification (describe)</label>
+                <input id="w9OtherClassification" name="otherClassification" type="text" placeholder="Describe classification" />
+              </div>
+              <div class="form-row">
+                <label for="w9ExemptPayeeCode">Exempt Payee Code (optional)</label>
+                <input id="w9ExemptPayeeCode" name="exemptPayeeCode" type="text" placeholder="Leave blank if not applicable" />
+              </div>
+              <div class="form-row">
+                <label for="w9FatcaExemptionCode">FATCA Exemption Code (optional)</label>
+                <input id="w9FatcaExemptionCode" name="fatcaExemptionCode" type="text" placeholder="Leave blank if not applicable" />
+              </div>
+              <div class="form-row">
+                <label for="w9AddressLine">Address</label>
+                <input id="w9AddressLine" name="addressLine" type="text" placeholder="123 Main St" />
+              </div>
+              <div class="form-row">
+                <label for="w9CityStateZip">City, State, Zip</label>
+                <input id="w9CityStateZip" name="cityStateZip" type="text" placeholder="Las Vegas, NV 89148" />
+              </div>
+              <div class="form-row">
+                <label for="w9Tin">Taxpayer Identification Number (SSN or EIN)</label>
+                <input id="w9Tin" name="tin" type="text" inputmode="numeric" required placeholder="123-45-6789 or 12-3456789" autocomplete="off" />
+              </div>
+              <div class="form-row">
+                <label for="w9SignatureName">Signature (type full legal name)</label>
+                <input id="w9SignatureName" name="signatureName" type="text" required placeholder="Jane Doe" />
+              </div>
+              <div class="form-row">
+                <label for="w9SignedDate">Date Signed</label>
+                <input id="w9SignedDate" name="signedDate" type="date" required />
+              </div>
+            </div>
+            <div class="form-actions portal-form-actions-mt">
+              <button class="button" type="submit">Save W-9</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <div class="portal-section" id="employeeTodosSection" data-tile-title="TO DO's" data-tile-summary="3 required forms pending">
+        <div class="portal-section__header">
+          <h2 class="portal-section__title">TO DO's</h2>
+        </div>
+        <p class="portal-form-hint">Open each required web form, read it fully, scroll to the bottom, acknowledge it, and electronically sign it. All signed forms are saved to your employee profile automatically.</p>
+        <div class="portal-todo-grid">
+          <article class="portal-todo-card" data-employee-form-card="background-consent">
+            <div class="portal-todo-card__top">
+              <div>
+                <p class="portal-todo-card__eyebrow">Required Form</p>
+                <h3 class="portal-todo-card__title">Background Acknowledgment &amp; Consent</h3>
+              </div>
+              <span id="employeeTodoBackgroundBadge" class="badge badge--yellow">Pending</span>
+            </div>
+            <p id="employeeTodoBackgroundSummary" class="portal-todo-card__summary">Open the form, review the disclosure, and sign to complete this onboarding item.</p>
+            <div class="form-actions portal-form-actions-row portal-form-actions-mt">
+              <button class="button" type="button" data-employee-form-open="background-consent">Open Form</button>
+              <button id="employeeBackgroundDisclosureBtn" class="button button--ghost button--sm" type="button">Printable Notice</button>
+              <button id="employeeBackgroundDisclosureDownloadBtn" class="button button--ghost button--sm" type="button" data-employee-form-view="background-consent" hidden>View Signed Copy</button>
+            </div>
+          </article>
+
+          <article class="portal-todo-card" data-employee-form-card="hipaa-compliance">
+            <div class="portal-todo-card__top">
+              <div>
+                <p class="portal-todo-card__eyebrow">Required Form</p>
+                <h3 class="portal-todo-card__title">HIPAA Compliance &amp; Confidentiality</h3>
+              </div>
+              <span id="employeeTodoHipaaBadge" class="badge badge--yellow">Pending</span>
+            </div>
+            <p id="employeeTodoHipaaSummary" class="portal-todo-card__summary">Open the HIPAA compliance form, review your confidentiality obligations, and sign before working assignments.</p>
+            <div class="form-actions portal-form-actions-row portal-form-actions-mt">
+              <button class="button" type="button" data-employee-form-open="hipaa-compliance">Open Form</button>
+              <button id="employeeHipaaComplianceViewBtn" class="button button--ghost button--sm" type="button" data-employee-form-view="hipaa-compliance" hidden>View Signed Copy</button>
+            </div>
+          </article>
+
+          <article class="portal-todo-card" data-employee-form-card="employee-handbook">
+            <div class="portal-todo-card__top">
+              <div>
+                <p class="portal-todo-card__eyebrow">Required Form</p>
+                <h3 class="portal-todo-card__title">Employee Handbook</h3>
+              </div>
+              <span id="employeeTodoHandbookBadge" class="badge badge--yellow">Pending</span>
+            </div>
+            <p id="employeeTodoHandbookSummary" class="portal-todo-card__summary">Open the Employee Handbook, read it in full, and sign to acknowledge the policies and expectations.</p>
+            <div class="form-actions portal-form-actions-row portal-form-actions-mt">
+              <button class="button" type="button" data-employee-form-open="employee-handbook">Open Form</button>
+              <button id="employeeHandbookViewBtn" class="button button--ghost button--sm" type="button" data-employee-form-view="employee-handbook" hidden>View Signed Copy</button>
+            </div>
+          </article>
+        </div>
+      </div>
+
+      <div id="employeeWebFormModal" class="portal-webform-modal" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="employeeWebFormModalTitle">
+        <div class="portal-webform-modal__scrim" data-employee-webform-close></div>
+        <div class="portal-webform-modal__dialog">
+          <div class="portal-webform-modal__header">
+            <div>
+              <p id="employeeWebFormModalEyebrow" class="portal-todo-card__eyebrow">Required Form</p>
+              <h3 id="employeeWebFormModalTitle" class="portal-webform-modal__title">Web Form</h3>
+            </div>
+            <button id="employeeWebFormModalCloseBtn" class="button button--ghost button--sm" type="button">Close</button>
+          </div>
+          <div id="employeeWebFormModalMessage" class="form-message form-message--neutral" aria-live="polite">Scroll through the full form to unlock the acknowledgment and electronic signature fields.</div>
+          <div class="portal-webform-modal__body">
+            <div id="employeeWebFormModalContent" class="portal-webform-modal__content"></div>
+          </div>
+          <form id="employeeWebFormModalForm" class="contact-form portal-webform-modal__form" novalidate>
+            <div id="employeeWebFormStatus" class="form-message form-message--neutral">Scroll to the bottom of the form to continue.</div>
+            <div id="employeeWebFormUnlockPanel" class="portal-webform-unlock" hidden>
+              <div class="form-row">
+                <label id="employeeWebFormAcknowledgeLabel" class="portal-acknowledgement-label" for="employeeWebFormAcknowledge">
+                  <input id="employeeWebFormAcknowledge" name="acknowledged" type="checkbox" class="portal-acknowledgement-checkbox" />
+                  <span>I have read the full form, understand the statement above, and I agree to sign electronically.</span>
+                </label>
+              </div>
+              <div class="portal-auto-grid">
+                <div class="form-row">
+                  <label for="employeeWebFormLegalName">Legal Name</label>
+                  <input id="employeeWebFormLegalName" name="legalName" type="text" required placeholder="Jane Doe" />
+                </div>
+                <div class="form-row">
+                  <label for="employeeWebFormSignatureName">E-Signature (type full legal name)</label>
+                  <input id="employeeWebFormSignatureName" name="signatureName" type="text" required placeholder="Jane Doe" />
+                </div>
+                <div class="form-row">
+                  <label for="employeeWebFormSignedDate">Date Signed</label>
+                  <input id="employeeWebFormSignedDate" name="signedDate" type="date" required />
+                </div>
+              </div>
+              <div class="form-actions portal-form-actions-row portal-form-actions-mt">
+                <button id="employeeWebFormSubmitBtn" class="button" type="submit">Sign and Save</button>
+                <button class="button button--ghost" type="button" data-employee-webform-close>Cancel</button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <template id="employeeBackgroundConsentTemplate">
+        <div class="portal-webform-copy">
+          <p>Progress Staffing Agency uses background screening to support safe placement decisions, client requirements, and lawful employment eligibility review. You must read this disclosure in full before signing.</p>
+          <h4>Authorization</h4>
+          <p>I authorize Progress Staffing Agency, its clients, consumer reporting agencies, and authorized representatives to obtain and review background screening information as permitted by applicable law for hiring, placement, retention, reassignment, and related employment purposes.</p>
+          <h4>Records That May Be Reviewed</h4>
+          <ul>
+            <li>Identity and Social Security trace information</li>
+            <li>Criminal history records where legally permitted</li>
+            <li>Employment and education verification</li>
+            <li>Professional license, certification, and driving records when applicable to assignment duties</li>
+            <li>Other screening records lawfully relevant to employment or placement</li>
+          </ul>
+          <h4>Employee Rights</h4>
+          <p>I understand that any consumer report or investigative consumer report will be handled in accordance with applicable federal and state law. If adverse action is considered based on report information, I understand I may be entitled to additional notices and a chance to respond as required by law.</p>
+          <h4>Electronic Signature</h4>
+          <p>By checking the acknowledgment box and typing my legal name below, I confirm that I reviewed this disclosure fully and consent to the authorized screening described above.</p>
+          <p><a class="link" href="/background-disclosure-notice.html" target="_blank" rel="noopener">Open the printable disclosure notice in a new tab</a>.</p>
+        </div>
+      </template>
+
+      <template id="employeeHipaaComplianceTemplate">
+        <div class="portal-webform-copy">
+          <p>This HIPAA compliance and confidentiality acknowledgment applies to any assignment where you may see, hear, handle, store, transmit, or discuss protected health information.</p>
+          <h4>Confidentiality Duties</h4>
+          <p>I understand that protected health information must only be accessed, used, or disclosed for authorized work purposes and only to the minimum extent necessary to perform my assignment responsibilities.</p>
+          <h4>Work Rules</h4>
+          <ul>
+            <li>I will not share patient or resident information with unauthorized persons.</li>
+            <li>I will protect paper records, verbal conversations, screens, texts, emails, and attachments that contain protected health information.</li>
+            <li>I will follow client-site privacy, security, password, device, and reporting procedures.</li>
+            <li>I will immediately report any suspected privacy breach, lost device, misdirected communication, or unauthorized disclosure to Progress Staffing Agency and the client contact.</li>
+          </ul>
+          <h4>Consequences</h4>
+          <p>I understand that failing to protect confidential information may result in removal from assignment, disciplinary action, termination of employment eligibility, client-site exclusion, and other consequences allowed by law or policy.</p>
+          <h4>Electronic Signature</h4>
+          <p>By signing electronically, I acknowledge that I read this entire HIPAA compliance statement, understand my confidentiality obligations, and agree to follow them on every assignment.</p>
+        </div>
+      </template>
+
+      <template id="employeeHandbookTemplate">
+        <div class="portal-webform-copy">
+          <p>This Employee Handbook outlines the policies, expectations, and guidelines that apply to all temporary, contract, and placement employees. Read this handbook in full before signing.</p>
+          <h4>Welcome &amp; Purpose</h4>
+          <p>Welcome to Progress Staffing Agency. This handbook is your reference for the workplace standards we expect every employee to follow while on assignment. It applies to all industries and roles we staff, including warehouse, logistics, healthcare support, manufacturing, administrative, and general labor positions.</p>
+          <h4>Employment Relationship</h4>
+          <p>All employment with Progress Staffing Agency is on an at-will basis. This means either you or the company may end the employment relationship at any time, with or without cause or notice. Nothing in this handbook creates a contract of employment or guarantees any specific duration of employment or assignment.</p>
+          <h4>Equal Employment Opportunity</h4>
+          <p>Progress Staffing Agency is committed to equal opportunity in all employment decisions. We do not discriminate on the basis of race, color, religion, sex, sexual orientation, gender identity, national origin, age, disability, veteran status, genetic information, or any other legally protected characteristic. Employees who believe they have experienced discrimination or harassment should report it immediately to a supervisor or company representative.</p>
+          <h4>Workplace Conduct &amp; Professionalism</h4>
+          <ul>
+            <li>Treat coworkers, supervisors, clients, patients, residents, customers, and the public with respect and professionalism at all times.</li>
+            <li>Follow all rules, procedures, and instructions provided by the client worksite and by Progress Staffing Agency.</li>
+            <li>Harassment, bullying, threats, violence, and retaliation are strictly prohibited and may result in immediate removal and termination.</li>
+            <li>Possession or use of alcohol, illegal drugs, or unauthorized substances while on duty or on client property is prohibited.</li>
+            <li>Dress code and personal protective equipment requirements set by the client site must be followed.</li>
+          </ul>
+          <h4>Attendance &amp; Punctuality</h4>
+          <p>Reliable attendance is essential. You are expected to report to your assignment on time and remain for your full scheduled shift. If you cannot report for a shift, notify Progress Staffing Agency as early as possible before the shift start time. Repeated absences, no-call/no-shows, or chronic tardiness may result in removal from the assignment and termination of employment eligibility.</p>
+          <h4>Safety &amp; Injury Reporting</h4>
+          <ul>
+            <li>Follow all workplace safety rules, procedures, and training provided by the client site and by Progress Staffing Agency.</li>
+            <li>Use all required personal protective equipment as directed.</li>
+            <li>Report any unsafe condition, near miss, or injury immediately to your on-site supervisor and to Progress Staffing Agency.</li>
+            <li>Do not operate equipment or perform tasks you have not been trained or authorized to perform.</li>
+          </ul>
+          <h4>Confidentiality &amp; Data Protection</h4>
+          <p>You may have access to confidential business, employee, patient, customer, or client information during your assignment. You must protect this information and only use it for authorized work purposes. Do not share, copy, photograph, or remove confidential information from the worksite without written authorization. Confidentiality obligations continue after your assignment or employment ends.</p>
+          <h4>Anti-Retaliation</h4>
+          <p>Progress Staffing Agency prohibits retaliation against any employee who reports a concern in good faith, including workplace safety issues, discrimination, harassment, wage concerns, or potential legal violations. If you believe you have experienced retaliation, report it to a company representative immediately.</p>
+          <h4>Separation &amp; Reassignment</h4>
+          <p>When an assignment ends, contact Progress Staffing Agency promptly to discuss availability for new assignments. Return all client property, badges, keys, equipment, and uniforms before or on the last day of assignment. Failure to return client property may result in deductions as permitted by law and may affect future assignment eligibility.</p>
+          <h4>Electronic Signature</h4>
+          <p>By checking the acknowledgment box and typing your legal name below, you confirm that you have read this entire Employee Handbook, understand the policies and expectations, and agree to follow them on every assignment.</p>
+        </div>
+      </template>
+
+      <div class="portal-section">
+        <div class="portal-section__header">
+          <h2 class="portal-section__title">Account Settings</h2>
+        </div>
+        <form id="portalAccountForm" class="contact-form portal-account-form" novalidate>
+          <div id="portalAccountMessage" class="form-message" aria-live="polite"></div>
+          <div class="form-row">
+            <label for="portalAccountName">Name</label>
+            <input id="portalAccountName" type="text" readonly />
+          </div>
+          <div class="form-row">
+            <label for="portalAccountUserId">User ID</label>
+            <input id="portalAccountUserId" type="text" readonly />
+          </div>
+          <div class="form-row">
+            <label for="portalAccountEmail">Email</label>
+            <input id="portalAccountEmail" type="text" readonly />
+          </div>
+          <div class="form-row">
+            <label for="portalAccountPasswordStatus">Current Password</label>
+            <input id="portalAccountPasswordStatus" type="text" value="Hidden for security" readonly />
+          </div>
+          <div class="form-row">
+            <label for="portalCurrentCredential">Current Password or Passcode</label>
+            <input id="portalCurrentCredential" name="currentCredential" type="password" required placeholder="Password or 4-digit passcode" />
+          </div>
+          <div class="form-row">
+            <label for="portalNewEmail">New Email <span class="admin-optional-text">(optional)</span></label>
+            <input id="portalNewEmail" name="newEmail" type="email" placeholder="new-email@example.com" />
+          </div>
+          <div class="form-row">
+            <label for="portalNewPassword">New Password <span class="admin-optional-text">(optional, min 8 chars)</span></label>
+            <input id="portalNewPassword" name="newPassword" type="password" minlength="8" placeholder="At least 8 characters" />
+          </div>
+          <div class="form-row">
+            <label for="portalNewPasscode">New 4-Digit Passcode <span class="admin-optional-text">(optional)</span></label>
+            <input id="portalNewPasscode" name="newPasscode" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="1234" />
+          </div>
+          <div class="form-row admin-checkbox-row">
+            <input id="portalRemovePasscode" name="removePasscode" type="checkbox" class="admin-checkbox" />
+            <label for="portalRemovePasscode" class="admin-label-reset">Remove stored passcode</label>
+          </div>
+          <div class="form-actions">
+            <button class="button" type="submit">Save Account Settings</button>
+          </div>
+          <hr class="admin-divider" />
+          <div class="form-row">
+            <label for="employeeDeletePassword">Delete Account Password Confirmation</label>
+            <input id="employeeDeletePassword" type="password" placeholder="Enter your current password" autocomplete="current-password" />
+          </div>
+          <div id="employeeDeleteAccountMessage" class="form-message" aria-live="polite"></div>
+          <div class="form-actions">
+            <button id="employeeDeleteAccountBtn" class="button button--danger" type="button">Withdraw Application and Delete Account</button>
+          </div>
+        </form>
+      </div>
+
+    </div>
+  </main>
+
+  <script src="theme.js"></script>
+  <script src="portal.js?v=20260325-1"></script>
+</body>
+</html>

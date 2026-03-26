@@ -1,0 +1,668 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Dashboard - Progress Staffing Agency</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="img.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-portal-page="admin" class="portal-page admin-compact">
+  <header class="site-header">
+    <div class="container header-inner">
+      <a class="logo" href="index.html">
+        <img class="logo__img" src="img.png" alt="Progress Staffing Agency" />
+        <span class="logo__text">Admin Dashboard</span>
+      </a>
+      <div class="portal-header-actions">
+        <button id="portalThemeToggleBtn" class="button button--ghost button--sm" type="button">Switch to Dark Mode</button>
+        <button id="portalLogoutBtn" class="button button--sm" type="button">Log Out</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="portal-welcome">
+    <div class="container">
+      <h1 id="portalGreeting">Admin Dashboard</h1>
+      <div class="portal-welcome__meta">
+        <p>System overview, user management, and assignments.</p>
+        <span id="portalIndustry" class="badge badge--blue portal-welcome__badge">—</span>
+      </div>
+    </div>
+  </div>
+
+  <main>
+    <div class="container admin-main-shell">
+
+      <!-- Stat row -->
+      <div class="stat-row">
+        <div class="stat-card"><span class="stat-card__label">Total Users</span><span class="stat-card__value" id="statTotalUsers">—</span></div>
+        <div class="stat-card"><span class="stat-card__label">Employees</span><span class="stat-card__value" id="statEmployees">—</span></div>
+        <div class="stat-card"><span class="stat-card__label">Jobsites</span><span class="stat-card__value" id="statJobsites">—</span></div>
+        <div class="stat-card"><span class="stat-card__label">Open Shifts</span><span class="stat-card__value" id="statOpenJobs">—</span></div>
+        <div class="stat-card"><span class="stat-card__label">Applications</span><span class="stat-card__value" id="statApplications">—</span></div>
+      </div>
+
+      <div class="portal-cols admin-layout-2">
+        <!-- Users table -->
+        <div class="portal-section">
+          <div class="portal-section__header">
+            <h2 class="portal-section__title">Users</h2>
+            <input id="adminUserSearch" class="admin-compact-field admin-compact-field--wide" type="text" placeholder="Search name, email, role…" />
+          </div>
+          <div id="adminUserMessage" class="form-message" aria-live="polite"></div>
+          <div id="adminUsersBulkBar" class="admin-bulk-bar" hidden>
+            <span id="adminUsersBulkCount" class="admin-bulk-bar__count">0 selected</span>
+            <button id="adminUsersBulkDeleteBtn" class="button button--sm" type="button">Delete Selected</button>
+            <button id="adminUsersBulkClearBtn" class="button button--ghost button--sm" type="button">Clear</button>
+          </div>
+          <div class="portal-table-wrap">
+            <table class="portal-table">
+              <thead><tr><th><input id="adminUsersSelectAll" type="checkbox" aria-label="Select all non-admin users" /></th><th>ID</th><th>Name</th><th>Email</th><th>User Type</th><th>Industry</th><th>Status</th><th>Action</th></tr></thead>
+              <tbody id="adminUsersTbody"><tr><td colspan="8">Loading...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Employees table -->
+        <div class="portal-section">
+          <div class="portal-section__header">
+            <h2 class="portal-section__title">Employees</h2>
+            <input id="adminEmployeeSearch" class="admin-compact-field admin-compact-field--wide" type="text" placeholder="Search name, email…" />
+          </div>
+          <div class="portal-table-wrap">
+            <table class="portal-table">
+              <thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Industry</th><th>Position</th><th>Phone</th><th>Status</th><th>Action</th></tr></thead>
+              <tbody id="adminEmployeesTbody"><tr><td colspan="8">Loading...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Jobs table -->
+      <div class="portal-section">
+        <div class="portal-section__header">
+          <h2 class="portal-section__title">Shifts</h2>
+          <div class="admin-inline-row">
+            <input id="adminJobSearch" class="admin-compact-field admin-compact-field--narrow" type="text" placeholder="Search…" />
+            <select id="adminJobStatusFilter" class="admin-compact-select" title="Filter jobs by status" aria-label="Filter jobs by status">
+              <option value="all">All statuses</option>
+              <option value="open">Open</option>
+              <option value="closed">Closed</option>
+              <option value="draft">Draft</option>
+            </select>
+          </div>
+        </div>
+        <div class="portal-table-wrap">
+          <table class="portal-table">
+            <thead><tr><th>ID</th><th>Industry</th><th>Position</th><th>Client Name</th><th>Client Address</th><th>Assignment</th><th>Taken By</th><th>Approval</th><th>Status</th><th>Action</th></tr></thead>
+            <tbody id="adminJobsTbody"><tr><td colspan="10">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="adminEmployeeDetailSection" class="portal-section" hidden>
+        <div class="portal-section__header">
+          <h2 id="adminEmployeeDetailTitle" class="portal-section__title">Employee Profile</h2>
+          <button id="adminEmployeeDetailCloseBtn" class="button button--ghost button--sm" type="button">Close</button>
+        </div>
+        <div id="adminEmployeeDetailMessage" class="form-message" aria-live="polite"></div>
+        <div id="adminEmployeeProfile" class="profile-info"></div>
+        <div class="contact-form admin-detail-form">
+          <div id="adminBackgroundStatusMessage" class="form-message" aria-live="polite"></div>
+          <div class="form-row">
+            <label for="adminEmployeeBackgroundStatus">Background Check Status</label>
+            <select id="adminEmployeeBackgroundStatus" name="backgroundStatus">
+              <option value="passed">Passed</option>
+              <option value="needs_further_attention">Needs further attention</option>
+            </select>
+          </div>
+          <div class="form-actions">
+            <button id="adminEmployeeBackgroundSaveBtn" class="button button--sm" type="button">Save Background Status</button>
+          </div>
+        </div>
+        <form id="adminBackgroundUploadForm" class="contact-form admin-detail-form" novalidate>
+          <div id="adminBackgroundUploadMessage" class="form-message" aria-live="polite"></div>
+          <div class="form-row">
+            <label for="adminBackgroundFile">Upload Background Document</label>
+            <input id="adminBackgroundFile" name="document" type="file" required />
+          </div>
+          <div class="form-actions">
+            <button id="adminBackgroundUploadBtn" class="button button--ghost button--sm" type="submit">Upload Background</button>
+          </div>
+        </form>
+        <div class="admin-stack-md">
+          <h3 class="admin-subheading">Document Checklist</h3>
+          <ul id="adminEmployeeChecklist" class="checklist"></ul>
+        </div>
+
+        <div class="admin-stack-lg">
+          <h3 class="admin-subheading">Tax Forms</h3>
+          <div class="portal-table-wrap">
+            <table class="portal-table">
+              <thead><tr><th>Form</th><th>Name</th><th>TIN</th><th>Signed Date</th><th>Last Updated</th></tr></thead>
+              <tbody id="adminEmployeeTaxForms"><tr><td colspan="5">Select an employee to view tax forms.</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="admin-stack-lg">
+          <h3 class="admin-subheading">Onboarding Forms</h3>
+          <div class="portal-table-wrap">
+            <table class="portal-table">
+              <thead><tr><th>Form</th><th>Legal Name</th><th>Signature</th><th>Signed Date</th><th>Last Updated</th><th>Actions</th></tr></thead>
+              <tbody id="adminEmployeeOnboardingForms"><tr><td colspan="6">Select an employee to view onboarding forms.</td></tr></tbody>
+            </table>
+          </div>
+          <div id="adminOnboardingFormDetailPanel" class="contact-form admin-detail-form" hidden>
+            <div class="portal-section__header">
+              <h4 class="portal-section__title portal-section__title--sub">Onboarding Form Details</h4>
+              <button id="adminOnboardingFormDetailCloseBtn" class="button button--ghost button--sm" type="button">Close</button>
+            </div>
+            <div id="adminOnboardingFormDetailMessage" class="form-message form-message--neutral" aria-live="polite">Select an onboarding form to review.</div>
+            <div id="adminOnboardingFormDetailBody" class="profile-info"></div>
+          </div>
+        </div>
+
+        <div class="admin-stack-lg">
+          <h3 class="admin-subheading">Uploaded Documents</h3>
+          <div class="portal-table-wrap">
+            <table class="portal-table doc-table">
+              <thead><tr><th>Type</th><th>File Name</th><th>Uploaded</th><th>Uploaded By</th><th>Expiration</th><th>Status / Action</th></tr></thead>
+              <tbody id="adminEmployeeDocuments"><tr><td colspan="6">Select an employee to view details.</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+
+      <div id="adminTimesheetsSection" class="portal-section">
+        <div class="portal-section__header">
+          <h2 class="portal-section__title">Timesheets</h2>
+        </div>
+        <div class="portal-section__controls admin-timesheet-controls">
+          <div class="form-row admin-form-row-reset admin-form-row--wide">
+            <label for="adminTimesheetEmployeeFilter">Filter by Employee</label>
+            <select id="adminTimesheetEmployeeFilter">
+              <option value="">All employees</option>
+            </select>
+          </div>
+          <div class="form-row admin-form-row-reset admin-form-row--mid">
+            <label for="adminTimesheetStatusFilter">Filter by Status</label>
+            <select id="adminTimesheetStatusFilter">
+              <option value="">All statuses</option>
+              <option value="pending_approval">Pending Approval</option>
+              <option value="approved">Approved</option>
+            </select>
+          </div>
+          <div class="form-row admin-form-row-reset admin-form-row--mid">
+            <label for="adminTimesheetSourceFilter">Filter by Source</label>
+            <select id="adminTimesheetSourceFilter">
+              <option value="">All sources</option>
+              <option value="clock">Clock</option>
+              <option value="manual">Manual Entry</option>
+              <option value="paper">Paper Upload</option>
+            </select>
+          </div>
+          <div class="form-row admin-form-row-reset admin-form-row--mid">
+            <label for="adminTimesheetExportPeriod">Export Pay Period</label>
+            <select id="adminTimesheetExportPeriod">
+              <option value="">All pay periods</option>
+            </select>
+          </div>
+          <div class="form-row admin-form-row-reset admin-form-row--mid">
+            <label for="adminTimesheetExportCsvBtn">Payroll Export</label>
+            <button id="adminTimesheetExportCsvBtn" class="button button--ghost button--sm" type="button">Download CSV (Excel)</button>
+          </div>
+        </div>
+        <div id="adminTimesheetMessage" class="form-message" aria-live="polite"></div>
+        <div class="portal-table-wrap admin-table-wrap-bottom">
+          <table class="portal-table">
+            <thead><tr><th>Employee</th><th>Period</th><th>Shift</th><th>Total Hours</th><th>Submitted By</th><th>Source</th><th>Status</th><th>Signature</th><th>Action</th></tr></thead>
+            <tbody id="adminTimesheetsTbody"><tr><td colspan="9">Loading...</td></tr></tbody>
+          </table>
+        </div>
+        <div id="adminTimesheetEntriesPanel" class="admin-timesheet-panel admin-hidden">
+          <div class="admin-inline-row admin-inline-row--between">
+            <h4 id="adminTimesheetEntriesTitle" class="admin-subheading">Time Entries</h4>
+            <button id="adminTimesheetEntriesCloseBtn" class="button button--ghost button--sm" type="button">Close</button>
+          </div>
+          <div class="portal-table-wrap">
+            <table class="portal-table">
+              <thead><tr><th>#</th><th>Date</th><th>Clock In</th><th>Clock Out</th><th>Hours</th><th>Type</th><th>Notes</th></tr></thead>
+              <tbody id="adminTimesheetEntriesTbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="admin-section-divider">
+          <h4 class="admin-subheading-sm">Add Manual Timesheet Entry</h4>
+          <p class="admin-helper-copy">Use this when an employee forgot to clock in or out. Entries submit from this tile and go to the jobsite for approval and signature.</p>
+          <div id="adminManualTimesheetMessage" class="form-message" aria-live="polite"></div>
+          <div class="admin-grid-fields">
+            <div class="form-row">
+              <label for="adminManualTsEmployee">Employee</label>
+              <select id="adminManualTsEmployee">
+                <option value="">Select employee…</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <label for="adminManualTsAssignment">Assignment / Shift</label>
+              <select id="adminManualTsAssignment">
+                <option value="">Select assignment…</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <label for="adminManualTsPeriodStart">Period Start</label>
+              <input id="adminManualTsPeriodStart" type="date" />
+            </div>
+            <div class="form-row">
+              <label for="adminManualTsPeriodEnd">Period End</label>
+              <input id="adminManualTsPeriodEnd" type="date" />
+            </div>
+          </div>
+          <div id="adminManualTsEntriesContainer" class="admin-manual-entry-container">
+          </div>
+          <div class="admin-inline-row admin-inline-row--wrap admin-inline-row--mb">
+            <button id="adminManualTsAddEntryBtn" class="button button--ghost button--sm" type="button">+ Add Entry Row</button>
+          </div>
+          <div class="form-row admin-notes-row">
+            <label for="adminManualTsNotes">Notes <span class="admin-optional-text">(optional)</span></label>
+            <textarea id="adminManualTsNotes" rows="2" placeholder="Reason for manual entry, any relevant context…"></textarea>
+          </div>
+          <div class="form-actions admin-form-actions-inline">
+            <button id="adminManualTsSubmitBtn" class="button" type="button">Submit for Jobsite Approval</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="adminExcuseFormsSection" class="portal-section">
+        <div class="portal-section__header">
+          <h2 class="portal-section__title">Employee Excuse Forms Medical/Non-Medical</h2>
+        </div>
+        <div id="adminExcuseFormsMessage" class="form-message" aria-live="polite"></div>
+        <div class="portal-table-wrap">
+          <table class="portal-table">
+            <thead><tr><th>Employee</th><th>Shift</th><th>Type</th><th>Reason</th><th>Doctor Note</th><th>Status</th><th>Action</th></tr></thead>
+            <tbody id="adminExcuseFormsTbody"><tr><td colspan="7">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="adminContractsSection" class="portal-section">
+        <div class="portal-section__header">
+          <h2 class="portal-section__title">Contracts</h2>
+        </div>
+        <p class="admin-section-copy">
+          Open industry-specific contract drawers.
+        </p>
+        <div class="form-actions admin-form-actions-inline-wrap">
+          <button id="adminOpenContractsBankBtn" class="button button--ghost" type="button">Contracts Bank</button>
+          <button id="adminOpenAllContractsBtn" class="button button--ghost" type="button">All Contracts</button>
+          <button id="adminOpenWarehouseContractsBtn" class="button button--ghost" type="button">Warehouse Industries</button>
+          <button id="adminOpenHealthcareContractsBtn" class="button button--ghost" type="button">Healthcare Industries</button>
+          <button id="adminOpenMiscDocsBtn" class="button button--ghost" type="button">Background Forms</button>
+        </div>
+      </div>
+
+      <div class="portal-cols admin-layout-2">
+      <!-- Assignment management -->
+      <div>
+        <div class="portal-section">
+          <div class="portal-section__header">
+            <h2 class="portal-section__title">Create Assignment</h2>
+          </div>
+          <form id="adminAssignForm" class="contact-form" novalidate>
+            <div id="adminAssignMessage" class="form-message" aria-live="polite"></div>
+            <div class="form-row">
+              <label for="adminAssignJobId">Job</label>
+              <select id="adminAssignJobId" name="jobId" required>
+                <option value="">Select a job…</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <label for="adminAssignEmployeeId">Employee</label>
+              <select id="adminAssignEmployeeId" name="employeeUserId" required>
+                <option value="">Select an employee…</option>
+              </select>
+              <p class="admin-caption">Only active employees are available for assignment.</p>
+            </div>
+            <div class="form-actions">
+              <button class="button" type="submit">Create Assignment</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Admin account settings -->
+      <div class="portal-section">
+        <div class="portal-section__header">
+          <h2 class="portal-section__title">Admin Account Settings</h2>
+        </div>
+        <form id="adminAccountForm" class="contact-form" novalidate>
+          <div id="adminAccountMessage" class="form-message" aria-live="polite"></div>
+          <div class="form-row">
+            <label for="adminAccountName">Name</label>
+            <input id="adminAccountName" type="text" readonly />
+          </div>
+          <div class="form-row">
+            <label for="adminAccountUserId">User ID</label>
+            <input id="adminAccountUserId" type="text" readonly />
+          </div>
+          <div class="form-row">
+            <label for="adminAccountEmail">Email</label>
+            <input id="adminAccountEmail" type="text" readonly />
+          </div>
+          <div class="form-row">
+            <label for="adminAccountPasswordStatus">Current Password</label>
+            <input id="adminAccountPasswordStatus" type="text" value="Hidden for security" readonly />
+          </div>
+          <div class="form-row">
+            <label for="adminCurrentPassword">Current Password or Passcode</label>
+            <input id="adminCurrentPassword" name="currentCredential" type="password" required placeholder="Current password or 4-digit passcode" />
+          </div>
+          <div class="form-row">
+            <label for="adminNewEmail">New Email <span class="admin-optional-text">(optional)</span></label>
+            <input id="adminNewEmail" name="newEmail" type="email" placeholder="new-admin@example.com" />
+          </div>
+          <div class="form-row">
+            <label for="adminNewPassword">New Password <span class="admin-optional-text">(optional, min 8 chars)</span></label>
+            <input id="adminNewPassword" name="newPassword" type="password" minlength="8" placeholder="At least 8 characters" />
+          </div>
+          <div class="form-row">
+            <label for="adminNewPasscode">New 4-Digit Passcode <span class="admin-optional-text">(optional)</span></label>
+            <input id="adminNewPasscode" name="newPasscode" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="1234" />
+          </div>
+          <div class="form-row admin-checkbox-row">
+            <input id="adminRemovePasscode" class="admin-checkbox" name="removePasscode" type="checkbox" />
+            <label for="adminRemovePasscode" class="admin-label-reset">Remove stored passcode</label>
+          </div>
+          <div class="form-actions">
+            <button class="button" type="submit">Save Credentials</button>
+          </div>
+        </form>
+      </div>
+      </div>
+
+      <div id="adminContractsBankSection" class="portal-section" hidden>
+        <div class="portal-section__header">
+          <h2 class="portal-section__title">Contracts Bank</h2>
+        </div>
+        <form id="adminContractsBankUploadForm" class="contact-form admin-form-flat" novalidate>
+          <div id="adminContractsBankUploadMessage" class="form-message" aria-live="polite"></div>
+          <div class="form-row">
+            <label for="adminContractsBankIndustry">Industry Track</label>
+            <select id="adminContractsBankIndustry" name="industryTrack" required>
+              <option value="">Select track</option>
+              <option value="warehouse">Warehouse</option>
+              <option value="healthcare">Healthcare</option>
+            </select>
+          </div>
+          <input id="adminContractsBankFileInput" name="contract" type="file" accept="application/pdf" multiple hidden />
+          <div class="form-actions admin-form-actions-inline-wrap">
+            <button id="adminContractsBankChooseFilesBtn" class="button button--ghost" type="button">Choose Files</button>
+            <button id="adminContractsBankSaveBtn" class="button" type="submit" disabled>Save to Contracts Bank</button>
+          </div>
+          <p id="adminContractsBankFilesSummary" class="admin-file-summary">No files selected.</p>
+          <ul id="adminContractsBankFilesList" class="admin-file-list"></ul>
+        </form>
+
+        <div class="portal-table-wrap">
+          <table class="portal-table">
+            <thead><tr><th>File</th><th>Industry</th><th>Saved</th><th></th></tr></thead>
+            <tbody id="adminContractsBankTbody"><tr><td colspan="4">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="adminContractsWarehouseSection" class="portal-section" hidden>
+        <div class="portal-section__header">
+          <h2 class="portal-section__title">Warehouse Industries Contracts</h2>
+        </div>
+        <form id="adminContractsWarehouseForm" class="contact-form admin-form-bottom" novalidate>
+          <div id="adminContractsWarehouseMessage" class="form-message" aria-live="polite"></div>
+          <div class="form-row">
+            <label for="adminContractsWarehouseClient">Client</label>
+            <select id="adminContractsWarehouseClient" name="jobsiteUserId" required><option value="">Select client</option></select>
+          </div>
+          <div class="form-row">
+            <label for="adminContractsWarehouseFile">Contract Documents (PDF)</label>
+            <input id="adminContractsWarehouseFile" name="contract" type="file" accept="application/pdf" multiple required />
+          </div>
+          <div class="form-actions">
+            <button id="adminContractsWarehouseSendBtn" class="button" type="submit" disabled>Upload &amp; Send Contract(s)</button>
+          </div>
+        </form>
+        <div class="portal-table-wrap">
+          <table class="portal-table">
+            <thead><tr><th>File</th><th>Client</th><th>Status</th><th>Client</th><th>Admin</th><th>Action</th></tr></thead>
+            <tbody id="adminContractsWarehouseTbody"><tr><td colspan="6">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="adminContractsAllSection" class="portal-section" hidden>
+        <div class="portal-section__header">
+          <h2 class="portal-section__title">All Contracts</h2>
+        </div>
+        <div class="portal-table-wrap">
+          <table class="portal-table">
+            <thead><tr><th>File</th><th>Client</th><th>Status</th><th>Client</th><th>Admin</th><th>Action</th></tr></thead>
+            <tbody id="adminContractsAllTbody"><tr><td colspan="6">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="adminContractsHealthcareSection" class="portal-section" hidden>
+        <div class="portal-section__header">
+          <h2 class="portal-section__title">Healthcare Industries Contracts</h2>
+        </div>
+        <form id="adminContractsHealthcareForm" class="contact-form admin-form-bottom" novalidate>
+          <div id="adminContractsHealthcareMessage" class="form-message" aria-live="polite"></div>
+          <div class="form-row">
+            <label for="adminContractsHealthcareClient">Client</label>
+            <select id="adminContractsHealthcareClient" name="jobsiteUserId" required><option value="">Select client</option></select>
+          </div>
+          <div class="form-row">
+            <label for="adminContractsHealthcareFile">Contract Documents (PDF)</label>
+            <input id="adminContractsHealthcareFile" name="contract" type="file" accept="application/pdf" multiple required />
+          </div>
+          <div class="form-actions">
+            <button id="adminContractsHealthcareSendBtn" class="button" type="submit" disabled>Upload &amp; Send Contract(s)</button>
+          </div>
+        </form>
+        <div class="portal-table-wrap">
+          <table class="portal-table">
+            <thead><tr><th>File</th><th>Client</th><th>Status</th><th>Client</th><th>Admin</th><th>Action</th></tr></thead>
+            <tbody id="adminContractsHealthcareTbody"><tr><td colspan="6">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="adminMiscDocsSection" class="portal-section">
+        <div class="portal-section__header">
+          <h2 class="portal-section__title">Background Forms</h2>
+        </div>
+        <p class="admin-section-copy">Download the DHS clearance packet, then upload and send completed forms to employees from this section.</p>
+        <div class="form-actions admin-form-actions-inline-wrap">
+          <a class="button button--ghost" href="/DHS%20CLEARANCE%20FORM.pdf" download target="_blank" rel="noopener">Download DHS Clearance Form</a>
+        </div>
+        <form id="adminMiscDocsUploadForm" class="contact-form admin-form-flat" novalidate>
+          <div id="adminMiscDocsUploadMessage" class="form-message" aria-live="polite"></div>
+          <div class="form-row">
+            <label for="adminMiscDocsDescription">Description <span class="admin-optional-text">(optional)</span></label>
+            <input id="adminMiscDocsDescription" name="description" type="text" placeholder="e.g. DHS clearance packet, consent form…" maxlength="255" />
+          </div>
+          <input id="adminMiscDocsFileInput" name="document" type="file" accept="application/pdf,image/*,.doc,.docx,.xls,.xlsx,.txt,.csv" multiple hidden />
+          <div class="form-actions admin-form-actions-inline-wrap">
+            <button id="adminMiscDocsChooseFilesBtn" class="button button--ghost" type="button">Choose Files</button>
+            <button id="adminMiscDocsSaveBtn" class="button" type="submit" disabled>Save to Background Forms</button>
+          </div>
+          <p id="adminMiscDocsFilesSummary" class="admin-file-summary">No files selected.</p>
+          <ul id="adminMiscDocsFilesList" class="admin-file-list"></ul>
+        </form>
+        <div class="portal-table-wrap">
+          <table class="portal-table">
+            <thead><tr><th>File</th><th>Description</th><th>Saved</th><th>Send</th><th></th></tr></thead>
+            <tbody id="adminMiscDocsTbody"><tr><td colspan="5">Loading...</td></tr></tbody>
+          </table>
+        </div>
+        <div id="adminMiscDocsSendPanel" class="admin-contract-panel admin-contract-panel--info" hidden>
+          <div class="admin-inline-row admin-inline-row--between">
+            <p class="admin-panel-title">Send Document: <span id="adminMiscDocsSendName"></span></p>
+            <button id="adminMiscDocsSendCloseBtn" class="button button--ghost button--sm" type="button">Cancel</button>
+          </div>
+          <div id="adminMiscDocsSendMessage" class="form-message admin-panel-message" aria-live="polite"></div>
+          <div class="form-row">
+            <label for="adminMiscDocsSendEmployee">Send to Employee</label>
+            <select id="adminMiscDocsSendEmployee"><option value="">&#8212; Select employee &#8212;</option></select>
+          </div>
+          <div class="form-actions">
+            <button id="adminMiscDocsSendSubmitBtn" class="button" type="button">Send Document</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="adminContractReviewSection" class="portal-section" hidden>
+        <div class="portal-section__header">
+          <h2 class="portal-section__title">Contract Review</h2>
+        </div>
+        <div id="adminContractReviewMessage" class="form-message" aria-live="polite"></div>
+        <p id="adminContractReviewMeta" class="admin-review-meta"></p>
+        <div class="form-actions admin-form-actions-inline-wrap">
+          <a id="adminContractReviewFileLink" class="button button--ghost" href="#" target="_blank" rel="noopener">Open Contract</a>
+        </div>
+        <div class="form-row admin-review-track-row">
+          <label for="adminContractIndustryTrack">Industry Track</label>
+          <div class="admin-review-track-controls">
+            <select id="adminContractIndustryTrack" class="admin-flex-grow" name="industryTrack">
+              <option value="warehouse">Warehouse</option>
+              <option value="healthcare">Healthcare</option>
+            </select>
+            <button id="adminContractIndustryTrackSaveBtn" class="button button--ghost button--sm" type="button">Update</button>
+          </div>
+        </div>
+        <div class="form-row">
+          <label for="adminContractSignature">Administrator Signature</label>
+          <input id="adminContractSignature" type="text" placeholder="Type full name" maxlength="200" />
+        </div>
+        <div class="form-row admin-checkbox-row">
+          <input id="adminContractAuthorize" class="admin-checkbox" type="checkbox" />
+          <label for="adminContractAuthorize" class="admin-label-reset">I authorize and approve this executed contract.</label>
+        </div>
+          <div class="form-actions">
+            <button id="adminContractSignBtn" class="button" type="button" data-contract-id="">Sign as Administrator</button>
+            <button id="adminContractDeleteBtn" class="button button--danger button--sm admin-contract-delete-btn" type="button" data-contract-id="">Delete Contract</button>
+          </div>
+          <!-- Admin confirm contract cancellation -->
+          <div id="adminContractCancelPanel" class="admin-contract-panel admin-contract-panel--danger">
+            <p class="admin-panel-title">Confirm Contract Cancellation</p>
+            <p class="admin-panel-copy">The client has initiated a cancellation request for this contract. By signing below, you confirm that both parties agree to permanently cancel this contract. This action cannot be reversed. The contract will remain on file indefinitely with a status of <strong>Cancelled</strong>.</p>
+            <div class="form-row">
+              <label for="adminContractCancelSignature">Administrator Electronic Signature</label>
+              <input id="adminContractCancelSignature" type="text" placeholder="Type your full legal name to confirm" maxlength="200" />
+            </div>
+            <div class="form-actions admin-form-actions-inline">
+              <button id="adminContractCancelConfirmBtn" class="button button--danger button--sm" type="button" data-contract-id="">Confirm Cancellation</button>
+            </div>
+            <div id="adminContractCancelMessage" class="form-message admin-panel-message" aria-live="polite"></div>
+          </div>
+          <!-- Admin renewal decision -->
+          <div id="adminContractRenewalPanel" class="admin-contract-panel admin-contract-panel--info">
+            <p class="admin-panel-title">Annual Contract Renewal Decision</p>
+            <p class="admin-panel-copy">This contract is pending annual renewal. Review the client&rsquo;s decision below and submit your renewal decision. If you choose to renew, type your full legal name as your electronic signature. If either party denies, the contract will expire.</p>
+            <div id="adminContractRenewalClientStatus" class="admin-renewal-status"></div>
+            <div class="form-row admin-hidden" id="adminRenewalSignatureRow">
+              <label for="adminContractRenewalSignature">Administrator Electronic Signature</label>
+              <input id="adminContractRenewalSignature" type="text" placeholder="Type your full legal name to sign" maxlength="200" />
+            </div>
+            <div class="form-actions admin-form-actions-inline">
+              <button id="adminContractRenewBtn" class="button button--sm" type="button" data-contract-id="">Renew Contract</button>
+              <button id="adminContractDenyRenewalBtn" class="button button--danger button--sm" type="button" data-contract-id="">Deny Renewal</button>
+            </div>
+            <div id="adminContractRenewalMessage" class="form-message admin-panel-message" aria-live="polite"></div>
+          </div>
+        </div>
+
+      <div class="portal-side-widget-row">
+        <div id="portalNotificationsSection" class="portal-section">
+          <div class="portal-section__header">
+            <h2 class="portal-section__title">Notifications</h2>
+          </div>
+          <div id="portalNotificationStatus" class="form-message" aria-live="polite"></div>
+          <p id="portalNotificationDescription" class="admin-section-copy">Enable browser notifications to receive alerts when employees upload documents for review.</p>
+          <div class="form-actions admin-notification-actions">
+            <button id="portalNotificationEnableBtn" class="button button--ghost button--sm" type="button">Enable Push Notifications</button>
+          </div>
+          <div class="notify-prefs-block">
+            <p class="notify-prefs-block__heading">Notification Channels</p>
+            <div class="form-row notify-toggle-row">
+              <span class="notify-toggle__label">Email Notifications</span>
+              <label class="toggle-switch" for="adminNotifyEmailEnabled">
+                <input id="adminNotifyEmailEnabled" name="notifyEmailEnabled" type="checkbox" aria-label="Email notifications" title="Email notifications" />
+                <span class="toggle-switch__track"></span>
+              </label>
+            </div>
+            <div class="form-row notify-toggle-row">
+              <span class="notify-toggle__label">Text Notifications</span>
+              <label class="toggle-switch" for="adminNotifySmsEnabled">
+                <input id="adminNotifySmsEnabled" name="notifySmsEnabled" type="checkbox" aria-label="Text notifications" title="Text notifications" />
+                <span class="toggle-switch__track"></span>
+              </label>
+            </div>
+            <div class="form-row notify-toggle-row">
+              <span class="notify-toggle__label">App Push Notifications</span>
+              <label class="toggle-switch" for="adminNotifyPushEnabled">
+                <input id="adminNotifyPushEnabled" name="notifyPushEnabled" type="checkbox" aria-label="App push notifications" title="App push notifications" />
+                <span class="toggle-switch__track"></span>
+              </label>
+            </div>
+          </div>
+          <div class="admin-inline-row admin-inline-row--end">
+            <button id="portalNotificationsClearReadBtn" class="button button--ghost button--sm" type="button">Clear Read</button>
+          </div>
+          <div class="portal-table-wrap admin-table-wrap-top">
+            <table class="portal-table">
+              <thead><tr><th>When</th><th>Type</th><th>Activity</th><th>Status</th><th>Action</th><th></th></tr></thead>
+              <tbody id="portalNotificationsList"><tr><td colspan="6">Loading...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="portalMessagesSection" class="portal-section">
+          <div class="portal-section__header">
+            <h2 class="portal-section__title">Messages</h2>
+          </div>
+          <form id="portalMessageForm" class="contact-form admin-form-bottom" novalidate>
+            <div id="portalMessageStatus" class="form-message" aria-live="polite"></div>
+            <div class="form-row">
+              <label for="portalMessageRecipient">Recipient</label>
+              <select id="portalMessageRecipient" name="recipientUserId" required>
+                <option value="">Select recipient</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <label for="portalMessageBody">Message</label>
+              <textarea id="portalMessageBody" name="body" rows="3" placeholder="Type your message"></textarea>
+            </div>
+            <div class="form-actions">
+              <button class="button" type="submit">Send Message</button>
+            </div>
+          </form>
+          <div id="portalMessagesList" class="portal-chat" aria-live="polite">
+            <div class="portal-chat__empty">Loading conversation...</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <script src="theme.js"></script>
+  <script src="portal.js?v=20260325-1"></script>
+</body>
+</html>

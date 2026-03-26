@@ -1,0 +1,20 @@
+{
+  "name": "Progress Staffing Portal",
+  "short_name": "Progress Portal",
+  "start_url": "/portal-login",
+  "display": "standalone",
+  "background_color": "#f5f7fb",
+  "theme_color": "#0f4c81",
+  "icons": [
+    {
+      "src": "/img.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/img.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

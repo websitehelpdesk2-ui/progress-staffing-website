@@ -1681,12 +1681,29 @@ async function handlePasskeyEnrollClick(form) {
   const enrollBtn = form ? form.querySelector('[data-passkey-enroll-btn]') : null;
   if (!form || !enrollBtn) return;
 
+  function showEnrollMessage(text, type) {
+    if (statusEl) {
+      statusEl.textContent = text;
+      statusEl.className = type === 'error' ? 'disclaimer form-message--error' : type === 'success' ? 'disclaimer form-message--success' : 'disclaimer';
+    }
+    setMessage(msg, text, type);
+  }
+
   if (!supportsPasskeys()) {
-    setMessage(msg, 'Biometric passkeys are not supported on this browser/device.', 'error');
+    showEnrollMessage('Biometric passkeys are not supported on this browser/device.', 'error');
     return;
   }
 
+  if (window.PublicKeyCredential && typeof PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable === 'function') {
+    const available = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable().catch(() => false);
+    if (!available) {
+      showEnrollMessage('No biometric sensor found on this device. Please use a device with Face ID, Touch ID, or fingerprint.', 'error');
+      return;
+    }
+  }
+
   enrollBtn.disabled = true;
+  if (statusEl) statusEl.textContent = 'Starting biometric setup...';
   try {
     const optionsRes = await apiFetch('/api/auth/passkey/register/options', {
       method: 'POST',
@@ -1695,17 +1712,19 @@ async function handlePasskeyEnrollClick(form) {
     });
     const optionsPayload = await optionsRes.json().catch(() => ({}));
     if (!optionsRes.ok || !optionsPayload.options) {
-      setMessage(msg, optionsPayload.error || 'Unable to start biometric setup.', 'error');
+      showEnrollMessage(optionsPayload.error || 'Unable to start biometric setup.', 'error');
       return;
     }
 
     const publicKey = decodePasskeyRegistrationOptions(optionsPayload.options);
+    if (statusEl) statusEl.textContent = 'Follow the prompt to register your biometric...';
     const credential = await navigator.credentials.create({ publicKey });
     if (!credential) {
-      setMessage(msg, 'Biometric setup was cancelled.', 'neutral');
+      showEnrollMessage('Biometric setup was cancelled.', 'neutral');
       return;
     }
 
+    if (statusEl) statusEl.textContent = 'Verifying biometric registration...';
     const verifyRes = await apiFetch('/api/auth/passkey/register/verify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1713,18 +1732,19 @@ async function handlePasskeyEnrollClick(form) {
     });
     const verifyPayload = await verifyRes.json().catch(() => ({}));
     if (!verifyRes.ok) {
-      setMessage(msg, verifyPayload.error || 'Unable to complete biometric setup.', 'error');
+      showEnrollMessage(verifyPayload.error || 'Unable to complete biometric setup.', 'error');
       return;
     }
 
-    if (statusEl) statusEl.textContent = 'Biometric passkey registered successfully.';
-    setMessage(msg, 'Biometric login is now enabled on this device.', 'success');
+    showEnrollMessage('Biometric login is now enabled on this device.', 'success');
     await refreshPasskeyStatus(form);
   } catch (error) {
     if (error && error.name === 'NotAllowedError') {
-      setMessage(msg, 'Biometric setup was cancelled.', 'neutral');
+      showEnrollMessage('Biometric setup was cancelled or denied. Please try again and approve the prompt.', 'neutral');
+    } else if (error && error.name === 'InvalidStateError') {
+      showEnrollMessage('This device is already registered for biometrics.', 'neutral');
     } else {
-      setMessage(msg, 'Biometric setup failed. Please try again.', 'error');
+      showEnrollMessage('Biometric setup failed. Make sure you are on a secure connection (HTTPS) and try again.', 'error');
     }
   } finally {
     enrollBtn.disabled = false;
@@ -1802,7 +1822,7 @@ async function handlePasskeyLoginClick(form) {
   const btn = form ? form.querySelector('[data-passkey-login-btn]') : null;
 
   if (!supportsPasskeys()) {
-    setMessage(msg, 'Biometric passkeys are not supported on this browser/device.', 'error');
+    setMessage(msg, 'Biometric sign in is not supported on this browser/device.', 'error');
     return;
   }
 
@@ -1813,6 +1833,7 @@ async function handlePasskeyLoginClick(form) {
 
   hideMessage(msg);
   if (btn) btn.disabled = true;
+  if (msg) msg.textContent = 'Starting biometric sign in...';
 
   try {
     const optionsRes = await apiFetch('/api/auth/passkey/login/options', {
@@ -1827,12 +1848,14 @@ async function handlePasskeyLoginClick(form) {
     }
 
     const publicKey = decodePasskeyAuthenticationOptions(optionsPayload.options);
+    if (msg) msg.textContent = 'Follow the biometric prompt on your device...';
     const assertion = await navigator.credentials.get({ publicKey });
     if (!assertion) {
       setMessage(msg, 'Biometric sign in was cancelled.', 'neutral');
       return;
     }
 
+    if (msg) msg.textContent = 'Verifying biometric...';
     const verifyRes = await apiFetch('/api/auth/passkey/login/verify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1850,7 +1873,9 @@ async function handlePasskeyLoginClick(form) {
       : routeForRole(verifyPayload.user.role, verifyPayload.user.portalScope);
   } catch (error) {
     if (error && error.name === 'NotAllowedError') {
-      setMessage(msg, 'Biometric sign in was cancelled.', 'neutral');
+      setMessage(msg, 'Biometric sign in was cancelled or denied. Please try again and approve the prompt.', 'neutral');
+    } else if (error && error.name === 'SecurityError') {
+      setMessage(msg, 'Biometric sign in requires a secure (HTTPS) connection.', 'error');
     } else {
       setMessage(msg, 'Biometric sign in failed. Please try again.', 'error');
     }

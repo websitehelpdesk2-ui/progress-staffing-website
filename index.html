@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Progress Staffing Agency</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="home-page">
+  <header class="site-header">
+    <div class="container header-inner">
+      <a class="logo" href="#home">
+        <img class="logo__img" src="img.png" alt="Progress Staffing Agency" />
+        <span class="logo__text">Progress Staffing Agency</span>
+      </a>
+      <nav class="nav" aria-label="Primary">
+        <a href="#services">Services</a>
+        <a href="#about">About</a>
+        <a href="apply.html">Apply</a>
+        <a href="portal-login.html">Portal Login</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section id="home" class="hero">
+      <div class="hero-backdrop" aria-hidden="true"></div>
+      <div class="container hero-inner">
+        <div class="hero-copy">
+          <img class="hero-title-logo" src="psalogo.jpg" alt="Progress Staffing Agency" />
+          <h1>Staffing Solutions for Warehouse &amp; Healthcare Professionals</h1>
+          <p>Building reliable workforce partnerships that help people secure meaningful careers and help businesses grow with confidence.</p>
+          <div class="hero-actions">
+            <a class="button button--secondary" href="#services">Explore Services</a>
+          </div>
+        </div>
+        <div class="hero-media">
+          <div class="tabs" role="tablist" aria-label="Staffing categories">
+            <button class="tab" role="tab" aria-selected="true" data-tab="warehouse">Warehouse</button>
+            <button class="tab" role="tab" aria-selected="false" data-tab="healthcare">Healthcare</button>
+          </div>
+
+          <div class="tab-panel" data-panel="warehouse">
+            <div class="job-card">
+              <h4>Forklift Operator</h4>
+              <p>Operate forklifts safely to move pallets and products, load/unload shipments, and support warehouse flow.</p>
+              <a class="button button--secondary" href="apply.html?industry=warehouse&position=Forklift%20Operator">Apply Now</a>
+            </div>
+            <div class="job-card">
+              <h4>Material Handler</h4>
+              <p>Receive, store, and organize inventory while maintaining accuracy and timely fulfillment.</p>
+              <a class="button button--secondary" href="apply.html?industry=warehouse&position=Material%20Handler">Apply Now</a>
+            </div>
+            <div class="job-card">
+              <h4>Pick / Pack Specialist</h4>
+              <p>Pick orders, pack shipments, and help maintain productivity in fast-paced shipping environments.</p>
+              <a class="button button--secondary" href="apply.html?industry=warehouse&position=Pick%20%2F%20Pack%20Specialist">Apply Now</a>
+            </div>
+            <div class="job-card">
+              <h4>Inventory Control</h4>
+              <p>Monitor stock levels, perform cycle counts, and help improve accuracy across warehouse systems.</p>
+              <a class="button button--secondary" href="apply.html?industry=warehouse&position=Inventory%20Control">Apply Now</a>
+            </div>
+          </div>
+
+          <div class="tab-panel is-hidden" data-panel="healthcare">
+            <div class="job-card">
+              <h4>Certified Nursing Assistant (CNA)</h4>
+              <p>Assist with patient care, activities of daily living, and support nurses in long-term and acute care.</p>
+              <a class="button button--secondary" href="apply.html?industry=cna&position=Certified%20Nursing%20Assistant%20(CNA)">Apply Now</a>
+            </div>
+            <div class="job-card">
+              <h4>Licensed Practical Nurse (LPN)</h4>
+              <p>Provide nursing care, administer medications, and support care teams in clinical settings.</p>
+              <a class="button button--secondary" href="apply.html?industry=lpn&position=Licensed%20Practical%20Nurse%20(LPN)">Apply Now</a>
+            </div>
+            <div class="job-card">
+              <h4>Registered Nurse (RN)</h4>
+              <p>Deliver patient care, coordinate treatment plans, and collaborate with medical teams across specialties.</p>
+              <a class="button button--secondary" href="apply.html?industry=rn&position=Registered%20Nurse%20(RN)">Apply Now</a>
+            </div>
+            <div class="job-card">
+              <h4>Certified Medical Assistant (CMA)</h4>
+              <p>Support clinical workflows, take vitals, and prepare exam rooms in outpatient and specialty offices.</p>
+              <a class="button button--secondary" href="apply.html?industry=cma&position=Certified%20Medical%20Assistant%20(CMA)">Apply Now</a>
+            </div>
+            <div class="job-card">
+              <h4>Dietary Aide</h4>
+              <p>Prepare meals, assist with diet plans, and support nutrition services in healthcare and senior living.</p>
+              <a class="button button--secondary" href="apply.html?industry=dietary&position=Dietary%20Aide">Apply Now</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="mission" class="section section--alt">
+      <div class="container">
+        <h2>Our Mission</h2>
+        <p class="section-subtitle">Our mission is to connect dependable talent with trusted employers by delivering responsive staffing support, ethical hiring practices, and long-term workforce solutions for both warehouse and healthcare industries.</p>
+      </div>
+    </section>
+
+    <section id="services" class="section">
+      <div class="container">
+        <h2>Our Specialties</h2>
+        <p class="section-subtitle">We help people find stable jobs and help businesses build dependable teams.</p>
+        <div class="cards">
+          <div class="card">
+            <h3>Warehouse &amp; Logistics</h3>
+            <p>Staffing for forklift operators, material handlers, pick/pack specialists, and warehouse support roles.</p>
+          </div>
+          <div class="card">
+            <h3>Certified Nursing Assistants (CNA)</h3>
+            <p>Connect with healthcare facilities seeking compassionate CNAs for long-term care, rehab, and acute care.</p>
+          </div>
+          <div class="card">
+            <h3>Licensed Practical Nurses (LPN)</h3>
+            <p>Find rewarding LPN positions in clinics, hospitals, and skilled nursing settings.</p>
+          </div>
+          <div class="card">
+            <h3>Registered Nurses (RN)</h3>
+            <p>Opportunities in med/surg, ER, ICU, home health, and specialty nursing placements.</p>
+          </div>
+          <div class="card">
+            <h3>Certified Medical Assistants (CMA)</h3>
+            <p>Support clinical teams with medical assisting roles in outpatient and specialty care.</p>
+          </div>
+          <div class="card">
+            <h3>Dietary Aides</h3>
+            <p>Roles in nutrition services at senior living, healthcare facilities, and food production.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="about" class="section section--alt">
+      <div class="container">
+        <h2>About Progress Staffing</h2>
+        <p>Progress Staffing Agency is a dedicated staffing partner for both individuals and employers. We focus on matching qualified candidates to the right work environment, offering reliable, consistent support to maintain business continuity and build careers.</p>
+        <div class="grid">
+          <div class="grid-item">
+            <h3>For Job Seekers</h3>
+            <ul>
+              <li>Rapid placement – temporary, temp-to-hire, and direct hire</li>
+              <li>Competitive pay and benefits guidance</li>
+              <li>Interview prep and resume support</li>
+            </ul>
+          </div>
+          <div class="grid-item">
+            <h3>For Employers</h3>
+            <ul>
+              <li>Pre-screened candidates</li>
+              <li>Flexible staffing solutions</li>
+              <li>Dedicated account coordination</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <div class="footer-brand">
+        <strong>Progress Staffing Agency</strong>
+        <p>Supporting warehouse and healthcare workforce growth.</p>
+      </div>
+      <div class="footer-links">
+        <div>
+          <h4>Quick Links</h4>
+          <a href="#services">Services</a>
+          <a href="#about">About</a>
+          <a href="apply.html">Apply</a>
+          <a href="portal-login.html">Portal Login</a>
+          <a href="privacy-policy.html">Privacy Policy</a>
+          <a href="cookie-policy.html">Cookie Policy</a>
+        </div>
+        <div>
+          <h4>Contact</h4>
+          <p>Address: 285 Ladies Tee Ct, Las Vegas, NV 89148</p>
+          <p>Phone: <a class="link" href="tel:+17253165242">(725) 316-5242</a></p>
+          <p>Email: <a class="link" href="mailto:info@progressstaffingagency.com">info@progressstaffingagency.com</a></p>
+        </div>
+      </div>
+    </div>
+    <div class="footer-copy">
+      <p>&copy; <span id="year"></span> Progress Staffing Agency. All rights reserved.</p>
+    </div>
+  </footer>
+
+  <script src="theme.js"></script>
+  <script>
+    const yearEl = document.getElementById('year');
+    if (yearEl) yearEl.textContent = new Date().getFullYear();
+
+    const tabButtons = document.querySelectorAll('.tab');
+    const tabPanels = document.querySelectorAll('.tab-panel');
+
+    function setActiveTab(tabName) {
+      tabButtons.forEach((btn) => {
+        const isSelected = btn.dataset.tab === tabName;
+        btn.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+      });
+
+      tabPanels.forEach((panel) => {
+        const isVisible = panel.dataset.panel === tabName;
+        panel.classList.toggle('is-hidden', !isVisible);
+      });
+    }
+
+    tabButtons.forEach((btn) => {
+      btn.addEventListener('click', () => setActiveTab(btn.dataset.tab));
+    });
+  </script>
+</body>
+</html>

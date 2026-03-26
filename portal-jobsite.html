@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Client Dashboard - Progress Staffing Agency</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="apple-touch-icon" href="img.png" />
+</head>
+<body data-portal-page="jobsite" class="portal-page">
+  <header class="site-header">
+    <div class="container header-inner">
+      <a class="logo" href="index.html">
+        <img class="logo__img" src="img.png" alt="Progress Staffing Agency" />
+        <span class="logo__text">Client Dashboard</span>
+      </a>
+      <div class="portal-header-actions">
+        <button id="portalThemeToggleBtn" class="button button--ghost button--sm" type="button">Switch to Dark Mode</button>
+        <button id="portalLogoutBtn" class="button button--sm" type="button">Log Out</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="portal-welcome">
+    <div class="container">
+      <h1 id="portalGreeting">Client Dashboard</h1>
+      <div class="portal-welcome__meta">
+        <p id="portalSubtitle">Manage your job postings and company profile.</p>
+        <span id="portalIndustry" class="badge badge--blue portal-welcome__badge">—</span>
+      </div>
+    </div>
+  </div>
+
+  <main>
+    <div class="container portal-main-shell--lg">
+
+      <!-- Stats -->
+      <div class="stat-row">
+        <div class="stat-card"><span class="stat-card__label">Total Shifts</span><span class="stat-card__value" id="statTotalJobs">—</span></div>
+        <div class="stat-card"><span class="stat-card__label">Open Shifts</span><span class="stat-card__value" id="statOpenJobs">—</span></div>
+        <div class="stat-card"><span class="stat-card__label">Closed Shifts</span><span class="stat-card__value" id="statClosedJobs">—</span></div>
+      </div>
+
+      <!-- Profile -->
+      <div class="portal-section">
+        <div class="portal-section__header">
+          <h2 class="portal-section__title">Company Profile</h2>
+          <button id="jobsiteProfileEditBtn" class="button button--ghost button--sm" type="button">Edit</button>
+        </div>
+        <div class="profile-info" id="jobsiteProfile"><p class="empty-state">Loading...</p></div>
+        
+        <!-- Edit form (hidden by default) -->
+        <form id="jobsiteProfileEditForm" class="contact-form" novalidate hidden>
+          <div id="jobsiteProfileEditMessage" class="form-message" aria-live="polite"></div>
+          <div class="form-row">
+            <label for="jobsiteEditCompanyName">Company Name</label>
+            <input id="jobsiteEditCompanyName" name="companyName" type="text" placeholder="Your company name" />
+          </div>
+          <div class="form-row">
+            <label for="jobsiteEditContactName">Contact Name</label>
+            <input id="jobsiteEditContactName" name="contactName" type="text" placeholder="Contact person name" />
+          </div>
+          <div class="form-row">
+            <label for="jobsiteEditPhone">Phone</label>
+            <input id="jobsiteEditPhone" name="phone" type="tel" placeholder="(123) 456-7890" />
+          </div>
+          <div class="form-row">
+            <label for="jobsiteEditAddress">Street Address</label>
+            <input id="jobsiteEditAddress" name="address" type="text" placeholder="123 Main St" />
+          </div>
+          <div class="form-row">
+            <label for="jobsiteEditCity">City</label>
+            <input id="jobsiteEditCity" name="city" type="text" placeholder="Las Vegas" />
+          </div>
+          <div class="form-row">
+            <label for="jobsiteEditState">State</label>
+            <input id="jobsiteEditState" name="state" type="text" maxlength="2" placeholder="NV" />
+          </div>
+          <div class="form-row">
+            <label for="jobsiteEditZip">ZIP Code</label>
+            <input id="jobsiteEditZip" name="zip" type="text" inputmode="numeric" maxlength="10" placeholder="89101" />
+          </div>
+          <div class="portal-btn-row">
+            <button type="submit" class="button">Save Profile</button>
+            <button id="jobsiteProfileEditCancel" type="button" class="button button--ghost">Cancel</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Jobs list + Create form side by side -->
+      <div class="portal-cols">
+        <div class="portal-section portal-section--flex2">
+          <div class="portal-section__header">
+            <h2 class="portal-section__title">Your Shifts</h2>
+          </div>
+          <div class="job-cards-list" id="jobsiteJobs"><p class="empty-state">No jobs posted yet.</p></div>
+        </div>
+
+        <div class="portal-section">
+          <div class="portal-section__header">
+            <h2 class="portal-section__title">Post a New Shift</h2>
+          </div>
+          <form id="jobsiteCreateJobForm" class="contact-form" novalidate>
+            <div id="jobsiteCreateJobMessage" class="form-message" aria-live="polite"></div>
+            <div class="form-row">
+              <label for="jobIndustry">Industry</label>
+              <input id="jobIndustryLabel" type="text" value="Loading..." readonly title="Industry" />
+              <input id="jobIndustry" name="industry" type="hidden" value="" />
+            </div>
+            <div class="form-row">
+              <label for="jobTitle">Job Title</label>
+              <select id="jobTitle" name="title" required>
+                <option value="">Select position</option>
+              </select>
+            </div>
+            <div class="form-row admin-checkbox-row">
+              <input id="jobStatPayEnabled" name="statPayEnabled" type="checkbox" class="admin-checkbox" />
+              <label for="jobStatPayEnabled" class="admin-label-reset">STAT PAY</label>
+            </div>
+            <div class="form-row portal-hidden" id="jobStatPaySignatureRow">
+              <label for="jobStatPaySignature">STAT PAY E-Signature (Client Full Name)</label>
+              <input id="jobStatPaySignature" name="statPaySignature" type="text" placeholder="Type full legal name" />
+            </div>
+            <div class="form-actions portal-form-actions-row--md">
+              <button class="button button--ghost" id="jobSchedulePickerBtn" type="button">Pick Date &amp; Time</button>
+              <button class="button portal-disabled-btn" type="submit" disabled>Publish Shift</button>
+            </div>
+          </form>
+          <div id="jobsiteCreateJobPreview" class="portal-shift-preview-panel">
+            <h3 class="portal-preview-heading">Shift Preview</h3>
+            <div class="portal-preview-grid">
+              <div>
+                <div class="portal-preview-label">Industry</div>
+                <div id="previewCreateIndustry" class="portal-preview-value"></div>
+              </div>
+              <div>
+                <div class="portal-preview-label">Position</div>
+                <div id="previewCreateTitle" class="portal-preview-value"></div>
+              </div>
+              <div>
+                <div class="portal-preview-label">Schedule</div>
+                <div id="previewCreateSchedule" class="portal-preview-value"></div>
+              </div>
+              <div>
+                <div class="portal-preview-label">STAT PAY</div>
+                <div id="previewCreateStatPay" class="portal-preview-value">No</div>
+                <div id="previewCreateStatPaySignature" class="portal-preview-stat-sig"></div>
+              </div>
+            </div>
+            <div class="portal-btn-row">
+              <button class="button button--ghost" id="jobEditScheduleBtn" type="button">Edit Schedule</button>
+              <button class="button" id="jobConfirmPublishBtn" type="button">Confirm &amp; Publish</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="portal-section" id="jobsiteSchedulePickerSection" hidden>
+        <div class="portal-section__header">
+          <h2 class="portal-section__title">Select Shift Date &amp; Time</h2>
+        </div>
+        <div class="contact-form portal-flat-form">
+          <div class="form-row">
+            <label for="jobScheduleDate">Date</label>
+            <input id="jobScheduleDate" type="date" />
+          </div>
+          <div class="portal-time-grid">
+            <div class="form-row">
+              <label for="jobScheduleStart">Start Time</label>
+              <input id="jobScheduleStart" type="text" placeholder="h:mm AM/PM" autocomplete="off" />
+            </div>
+            <div class="form-row">
+              <label for="jobScheduleEnd">End Time</label>
+              <input id="jobScheduleEnd" type="text" placeholder="h:mm AM/PM" autocomplete="off" />
+            </div>
+          </div>
+          <div class="portal-sched-preview-block">
+            <div class="portal-sched-preview-label">Preview:</div>
+            <div id="jobSchedulePreview" class="portal-sched-preview-value">—</div>
+          </div>
+          <div id="jobSchedulePickerMessage" class="form-message" aria-live="polite"></div>
+          <div class="form-actions portal-form-actions-row-wrap">
+            <button class="button" id="jobScheduleApplyBtn" type="button">Apply to Shift</button>
+            <button class="button button--ghost" id="jobScheduleCancelBtn" type="button">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Edit job (hidden by default, shown when Edit clicked) -->
+      <div class="portal-section portal-hidden" id="jobsiteEditSection">
+        <div class="portal-section__header">
+          <h2 class="portal-section__title">Edit Shift</h2>
+          <button class="button button--sm button--ghost" id="cancelEditJobBtn" type="button">Cancel</button>
+        </div>
+        <form id="jobsiteEditJobForm" class="contact-form" novalidate>
+          <div id="jobsiteEditJobMessage" class="form-message" aria-live="polite"></div>
+          <input type="hidden" id="editJobId" name="jobId" />
+          <div class="portal-edit-grid">
+            <div class="form-row">
+              <label for="editJobIndustry">Industry</label>
+              <input id="editJobIndustryLabel" type="text" value="Loading..." readonly title="Industry" />
+              <input id="editJobIndustry" name="industry" type="hidden" value="" />
+            </div>
+            <div class="form-row">
+              <label for="editJobTitle">Title</label>
+              <select id="editJobTitle" name="title" required>
+                <option value="">Select position</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <label for="editJobStatus">Status</label>
+              <select id="editJobStatus" name="status" required>
+                <option value="open">Open</option>
+                <option value="closed">Closed</option>
+                <option value="draft">Draft</option>
+              </select>
+            </div>
+            <div class="form-row admin-checkbox-row">
+              <input id="editJobStatPayEnabled" name="statPayEnabled" type="checkbox" class="admin-checkbox" />
+              <label for="editJobStatPayEnabled" class="admin-label-reset">STAT PAY</label>
+            </div>
+            <div class="form-row portal-hidden" id="editJobStatPaySignatureRow">
+              <label for="editJobStatPaySignature">STAT PAY E-Signature (Client Full Name)</label>
+              <input id="editJobStatPaySignature" name="statPaySignature" type="text" placeholder="Type full legal name" />
+            </div>
+          </div>
+          <div class="form-actions portal-form-actions-row--md-mt">
+            <button class="button" type="submit">Save Changes</button>
+            <button class="button button--ghost" id="cancelEditJobBtnForm" type="button">Cancel</button>
+          </div>
+        </form>
+        <div id="jobsiteEditJobPreview" class="portal-shift-preview-panel">
+          <h3 class="portal-preview-heading">Shift Preview</h3>
+          <div class="portal-preview-grid">
+            <div>
+              <div class="portal-preview-label">Industry</div>
+              <div id="previewEditIndustry" class="portal-preview-value"></div>
+            </div>
+            <div>
+              <div class="portal-preview-label">Position</div>
+              <div id="previewEditTitle" class="portal-preview-value"></div>
+            </div>
+            <div>
+              <div class="portal-preview-label">Status</div>
+              <div id="previewEditStatus" class="portal-preview-value"></div>
+            </div>
+            <div>
+              <div class="portal-preview-label">STAT PAY</div>
+              <div id="previewEditStatPay" class="portal-preview-value">No</div>
+              <div id="previewEditStatPaySignature" class="portal-preview-stat-sig"></div>
+            </div>
+          </div>
+          <div class="portal-btn-row">
+            <button class="button button--ghost" id="jobEditFormBackBtn" type="button">Back to Edit</button>
+            <button class="button" id="jobConfirmSaveBtn" type="button">Confirm &amp; Save</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="portal-section">
+        <div class="portal-section__header">
+          <h2 class="portal-section__title">Assigned Workers</h2>
+        </div>
+        <div class="portal-table-wrap">
+          <table class="portal-table">
+            <thead><tr><th>Employee</th><th>Position</th><th>Shift</th><th>Status</th><th>Action</th></tr></thead>
+            <tbody id="jobsiteAssignedWorkers"><tr><td colspan="5">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Timesheet Approvals -->
+      <div class="portal-section" id="jobsiteTimesheetSection">
+        <div class="portal-section__header">
+          <h2 class="portal-section__title">Timesheet Approvals</h2>
+        </div>
+        <p class="portal-form-hint">
+          Review and approve employee timesheets submitted for your jobsite. Your typed signature serves as the official approval for billing purposes.
+        </p>
+        <div class="portal-table-wrap">
+          <table class="portal-table">
+            <thead><tr><th>Employee</th><th>Position</th><th>Period</th><th>Total Hours</th><th>Submitted By</th><th>Source</th><th>Status</th><th>Action</th></tr></thead>
+            <tbody id="jobsiteTimesheetsTbody"><tr><td colspan="8">Loading...</td></tr></tbody>
+          </table>
+        </div>
+        <!-- Timesheet Review / Approve panel (hidden until Review clicked) -->
+        <div id="jobsiteTimesheetReviewPanel" class="portal-ts-review-panel">
+          <div class="portal-review-header">
+            <h3 id="jobsiteTimesheetReviewTitle" class="portal-review-heading">Timesheet Detail</h3>
+            <button id="jobsiteTimesheetReviewCloseBtn" class="button button--ghost button--sm" type="button">Close</button>
+          </div>
+          <div id="jobsiteTimesheetReviewMeta" class="portal-ts-review-meta"></div>
+          <div class="portal-table-wrap portal-table-wrap--mb">
+            <table class="portal-table">
+              <thead><tr><th>#</th><th>Date</th><th>Clock In</th><th>Clock Out</th><th>Hours</th><th>Type</th></tr></thead>
+              <tbody id="jobsiteTimesheetEntriesTbody"></tbody>
+            </table>
+          </div>
+          <div id="jobsiteTimesheetReviewApprovedBadge" class="portal-ts-approved-badge">
+            <strong class="portal-ts-approved-text">&#10003; Approved</strong>
+            <span id="jobsiteTimesheetApprovedDetail" class="portal-ts-approved-detail"></span>
+          </div>
+          <div id="jobsiteTimesheetApproveForm" class="portal-ts-approve-form">
+            <div id="jobsiteTimesheetApproveMessage" class="form-message" aria-live="polite"></div>
+            <div class="form-row portal-form-row--max420">
+              <label for="jobsiteApprovalSignature">Type Your Full Name to Sign &amp; Approve</label>
+              <input id="jobsiteApprovalSignature" type="text" placeholder="e.g. Jane Smith" autocomplete="name" maxlength="200" />
+            </div>
+            <div class="form-actions admin-form-actions-inline">
+              <button id="jobsiteTimesheetApproveBtn" class="button" type="button" data-timesheet-id="">Approve &amp; Sign</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="portal-section">
+        <div class="portal-section__header">
+          <h2 class="portal-section__title">Worker Documents & Background</h2>
+        </div>
+        <p class="portal-form-hint">Only approved documents for your assigned workers are shown. Social Security / Work Authorization files are hidden.</p>
+        <div class="portal-table-wrap">
+          <table class="portal-table">
+            <thead><tr><th>Employee</th><th>Position</th><th>Background</th><th>Shift</th><th>Document</th><th>File</th><th>Uploaded</th></tr></thead>
+            <tbody id="jobsiteWorkerDocuments"><tr><td colspan="7">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="portal-section" id="jobsiteWorkerComplianceSection">
+        <div class="portal-section__header">
+          <h2 class="portal-section__title">Worker Signed Compliance Forms</h2>
+        </div>
+        <p class="portal-form-hint">These signatures confirm that assigned workers completed the required background acknowledgment and HIPAA compliance web forms in their employee portal.</p>
+        <div class="portal-table-wrap">
+          <table class="portal-table">
+            <thead><tr><th>Employee</th><th>Position</th><th>Shift</th><th>Background Consent</th><th>HIPAA Compliance</th><th>Last Updated</th></tr></thead>
+            <tbody id="jobsiteWorkerComplianceForms"><tr><td colspan="6">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="portal-section" id="jobsiteContractsSection">
+        <div class="portal-section__header">
+          <h2 class="portal-section__title">Contracts</h2>
+        </div>
+        <div class="portal-table-wrap">
+          <table class="portal-table">
+            <thead><tr><th>File</th><th>Status</th><th>Viewed</th><th>Client</th><th>Admin</th><th>Action</th></tr></thead>
+            <tbody id="jobsiteContractsTbody"><tr><td colspan="6">Loading...</td></tr></tbody>
+          </table>
+        </div>
+        <div id="jobsiteContractReviewPanel" class="portal-contract-review-panel">
+          <div class="portal-review-header">
+            <h3 id="jobsiteContractReviewTitle" class="portal-review-heading">Contract Review</h3>
+            <button id="jobsiteContractReviewCloseBtn" class="button button--ghost button--sm" type="button">Close</button>
+          </div>
+          <div id="jobsiteContractReviewMessage" class="form-message" aria-live="polite"></div>
+          <p id="jobsiteContractReviewMeta" class="portal-section-info"></p>
+          <div class="form-actions admin-form-actions-inline-wrap">
+            <a id="jobsiteContractViewLink" class="button button--ghost" href="#" target="_blank" rel="noopener">Open Contract</a>
+          </div>
+          <div class="form-row">
+            <label for="jobsiteContractSignature">Client Signature</label>
+            <input id="jobsiteContractSignature" type="text" placeholder="Type full name" maxlength="200" />
+          </div>
+          <div class="form-row admin-checkbox-row">
+            <input id="jobsiteContractAuthorize" type="checkbox" class="admin-checkbox" />
+            <label for="jobsiteContractAuthorize" class="admin-label-reset">I authorize and agree to this contract.</label>
+          </div>
+          <div class="form-actions admin-form-actions-inline-wrap">
+            <button id="jobsiteContractSignBtn" class="button" type="button" data-contract-id="">Sign Contract</button>
+            <button id="jobsiteContractDeclineBtn" class="button button--danger" type="button" data-contract-id="">Decline Contract</button>
+          </div>
+          <div class="form-row">
+            <label for="jobsiteContractDeclineReason">Decline / Withdrawal Reason</label>
+            <textarea id="jobsiteContractDeclineReason" rows="3" placeholder="Reason"></textarea>
+          </div>
+          <div class="form-row">
+            <label for="jobsiteContractWithdrawCredential">Password or Passcode for Withdrawal</label>
+            <input id="jobsiteContractWithdrawCredential" type="password" placeholder="Password or 4-digit passcode" />
+          </div>
+          <div class="form-actions">
+            <button id="jobsiteContractWithdrawBtn" class="button button--ghost" type="button" data-contract-id="">Withdraw Contract</button>
+          </div>
+          <!-- Contract cancellation initiation (executed contracts) -->
+          <div id="jobsiteContractCancelPanel" class="portal-contract-cancel-panel">
+            <p class="portal-panel-bold-heading">Request Contract Cancellation</p>
+            <p class="portal-form-hint">To initiate cancellation of this executed contract, you must provide a reason and sign electronically below. An administrator will be notified and must also sign to complete the cancellation. Once both parties have signed, this contract will be permanently cancelled and cannot be reversed.</p>
+            <div class="form-row">
+              <label for="jobsiteContractCancelReason">Reason for Cancellation</label>
+              <textarea id="jobsiteContractCancelReason" rows="3" placeholder="State the reason for requesting contract cancellation."></textarea>
+            </div>
+            <div class="form-row">
+              <label for="jobsiteContractCancelSignature">Client Electronic Signature</label>
+              <input id="jobsiteContractCancelSignature" type="text" placeholder="Type your full legal name to sign" maxlength="200" />
+            </div>
+            <div class="form-actions portal-form-actions-row">
+              <button id="jobsiteContractCancelSubmitBtn" class="button button--danger button--sm" type="button" data-contract-id="">Submit Cancellation Request</button>
+              <button id="jobsiteContractCancelCancelBtn" class="button button--ghost button--sm" type="button">Close</button>
+            </div>
+            <div id="jobsiteContractCancelMessage" class="form-message portal-panel-msg" aria-live="polite"></div>
+          </div>
+          <!-- Renewal decision panel (renewal_pending contracts) -->
+          <div id="jobsiteContractRenewalPanel" class="portal-contract-renewal-panel">
+            <p class="portal-panel-bold-heading">Annual Contract Renewal</p>
+            <p class="portal-form-hint">This contract is due for its annual renewal. Please review the contract and select your decision below. If you choose to renew, type your full legal name as your electronic signature. If either party denies renewal, this contract will expire.</p>
+            <div class="form-row portal-hidden" id="jobsiteRenewalSignatureRow">
+              <label for="jobsiteContractRenewalSignature">Electronic Signature (required to renew)</label>
+              <input id="jobsiteContractRenewalSignature" type="text" placeholder="Type your full legal name to sign" maxlength="200" />
+            </div>
+            <div class="form-actions portal-form-actions-row">
+              <button id="jobsiteContractRenewBtn" class="button button--sm" type="button" data-contract-id="">Renew Contract</button>
+              <button id="jobsiteContractDenyRenewalBtn" class="button button--danger button--sm" type="button" data-contract-id="">Deny Renewal</button>
+            </div>
+            <div id="jobsiteContractRenewalMessage" class="form-message portal-panel-msg" aria-live="polite"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="portal-two-col-grid">
+        </div>
+
+        <div class="portal-section" id="jobsiteMiscDocsSection" hidden>
+          <div class="portal-section__header">
+            <h2 class="portal-section__title">Documents from Agency</h2>
+          </div>
+          <p class="portal-form-hint">Important documents sent to you by the agency.</p>
+          <div class="portal-table-wrap">
+            <table class="portal-table">
+              <thead><tr><th>File</th><th>Description</th><th>Received</th></tr></thead>
+              <tbody id="jobsiteMiscDocsTbody"><tr><td colspan="3">Loading...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="portal-two-col-grid">
+        <div class="portal-section">
+          <div class="portal-section__header">
+            <h2 class="portal-section__title">Platform Open Shifts</h2>
+          </div>
+          <div class="portal-table-wrap">
+            <table class="portal-table">
+              <thead><tr><th>ID</th><th>Shift</th><th>Company</th><th>Schedule</th></tr></thead>
+              <tbody id="jobsiteOpenShifts"><tr><td colspan="4">Loading...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="portal-section">
+          <div class="portal-section__header">
+            <h2 class="portal-section__title">Notifications</h2>
+          </div>
+          <div id="portalNotificationStatus" class="form-message" aria-live="polite"></div>
+          <p id="portalNotificationDescription" class="admin-section-copy">Enable browser notifications to receive alerts when contracts, messages, and timesheet updates need your attention.</p>
+          <div class="form-actions portal-form-actions-notif-enable">
+            <button id="portalNotificationEnableBtn" class="button button--ghost button--sm" type="button">Enable Push Notifications</button>
+          </div>
+          <div class="notify-prefs-block">
+            <p class="notify-prefs-block__heading">Notification Channels</p>
+            <div class="form-row notify-toggle-row">
+              <span class="notify-toggle__label">Email Notifications</span>
+              <label class="toggle-switch" for="portalNotifyEmailEnabled">
+                <input id="portalNotifyEmailEnabled" name="notifyEmailEnabled" type="checkbox" aria-label="Email Notifications" title="Email Notifications" />
+                <span class="toggle-switch__track"></span>
+              </label>
+            </div>
+            <div class="form-row notify-toggle-row">
+              <span class="notify-toggle__label">Text Notifications</span>
+              <label class="toggle-switch" for="portalNotifySmsEnabled">
+                <input id="portalNotifySmsEnabled" name="notifySmsEnabled" type="checkbox" aria-label="Text Notifications" title="Text Notifications" />
+                <span class="toggle-switch__track"></span>
+              </label>
+            </div>
+            <div class="form-row notify-toggle-row">
+              <span class="notify-toggle__label">App Push Notifications</span>
+              <label class="toggle-switch" for="portalNotifyPushEnabled">
+                <input id="portalNotifyPushEnabled" name="notifyPushEnabled" type="checkbox" aria-label="App Push Notifications" title="App Push Notifications" />
+                <span class="toggle-switch__track"></span>
+              </label>
+            </div>
+          </div>
+<div class="portal-notifications-end-row">
+    <button id="portalNotificationsClearReadBtn" class="button button--ghost button--sm" type="button">Clear Read</button>
+  </div>
+  <div class="portal-table-wrap portal-table-wrap--mt-sm">
+    <table class="portal-table">
+      <thead><tr><th>When</th><th>Type</th><th>Activity</th><th>Status</th><th>Action</th><th></th></tr></thead>
+      <tbody id="portalNotificationsList"><tr><td colspan="6">Loading...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="portal-section">
+          <div class="portal-section__header">
+            <h2 class="portal-section__title">Messages</h2>
+          </div>
+          <form id="portalMessageForm" class="contact-form portal-form-mb" novalidate>
+            <div id="portalMessageStatus" class="form-message" aria-live="polite"></div>
+            <div class="form-row">
+              <label for="portalMessageRecipient">Recipient</label>
+              <select id="portalMessageRecipient" name="recipientUserId" required>
+                <option value="">Select recipient</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <label for="portalMessageBody">Message</label>
+              <textarea id="portalMessageBody" name="body" rows="3" placeholder="Type your message"></textarea>
+            </div>
+            <div class="form-actions">
+              <button class="button" type="submit">Send Message</button>
+            </div>
+          </form>
+          <div id="portalMessagesList" class="portal-chat" aria-live="polite">
+            <div class="portal-chat__empty">Loading conversation...</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="portal-section">
+        <div class="portal-section__header">
+          <h2 class="portal-section__title">Account</h2>
+        </div>
+        <form id="portalAccountForm" class="contact-form portal-account-form portal-form-mb" novalidate>
+          <div id="portalAccountMessage" class="form-message" aria-live="polite"></div>
+          <div class="form-row">
+            <label for="portalAccountName">Name</label>
+            <input id="portalAccountName" type="text" readonly />
+          </div>
+          <div class="form-row">
+            <label for="portalAccountUserId">User ID</label>
+            <input id="portalAccountUserId" type="text" readonly />
+          </div>
+          <div class="form-row">
+            <label for="portalAccountEmail">Email</label>
+            <input id="portalAccountEmail" type="text" readonly />
+          </div>
+          <div class="form-row">
+            <label for="portalAccountPasswordStatus">Current Password</label>
+            <input id="portalAccountPasswordStatus" type="text" value="Hidden for security" readonly />
+          </div>
+          <div class="form-row">
+            <label for="portalCurrentCredential">Current Password or Passcode</label>
+            <input id="portalCurrentCredential" name="currentCredential" type="password" required placeholder="Password or 4-digit passcode" />
+          </div>
+          <div class="form-row">
+            <label for="portalNewEmail">New Email <span class="admin-optional-text">(optional)</span></label>
+            <input id="portalNewEmail" name="newEmail" type="email" placeholder="new-email@example.com" />
+          </div>
+          <div class="form-row">
+            <label for="portalNewPassword">New Password <span class="admin-optional-text">(optional, min 8 chars)</span></label>
+            <input id="portalNewPassword" name="newPassword" type="password" minlength="8" placeholder="At least 8 characters" />
+          </div>
+          <div class="form-row">
+            <label for="portalNewPasscode">New 4-Digit Passcode <span class="admin-optional-text">(optional)</span></label>
+            <input id="portalNewPasscode" name="newPasscode" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="1234" />
+          </div>
+          <div class="form-row admin-checkbox-row">
+            <input id="portalRemovePasscode" name="removePasscode" type="checkbox" class="admin-checkbox" />
+            <label for="portalRemovePasscode" class="admin-label-reset">Remove stored passcode</label>
+          </div>
+          <div class="form-actions">
+            <button class="button" type="submit">Save Account Settings</button>
+          </div>
+        </form>
+        <div id="jobsiteWithdrawMessage" class="form-message" aria-live="polite"></div>
+        <p class="portal-form-hint">
+          Withdraw your jobsite profile from the platform. This deletes your account and all related job postings.
+        </p>
+        <p class="portal-form-hint">
+          A saved 4-digit passcode is required to confirm withdrawal.
+        </p>
+        <button id="jobsiteWithdrawBtn" class="button button--danger" type="button">Withdraw Profile</button>
+      </div>
+
+    </div>
+  </main>
+
+  <script src="theme.js"></script>
+  <script src="portal.js?v=20260325-1"></script>
+</body>
+</html>

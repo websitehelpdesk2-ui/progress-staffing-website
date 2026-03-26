@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Scheduling Portal - Progress Staffing Agency</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="img.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-portal-page="scheduling" class="portal-page">
+  <header class="site-header">
+    <div class="container header-inner">
+      <a class="logo" href="index.html">
+        <img class="logo__img" src="img.png" alt="Progress Staffing Agency" />
+        <span class="logo__text">Scheduling Portal</span>
+      </a>
+      <div class="portal-header-actions">
+        <button id="portalThemeToggleBtn" class="button button--ghost button--sm" type="button">Switch to Dark Mode</button>
+        <button id="portalLogoutBtn" class="button button--sm" type="button">Log Out</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="portal-welcome">
+    <div class="container">
+      <h1 id="portalGreeting">Scheduling Portal</h1>
+      <div style="display:flex;align-items:center;gap:1rem;margin-top:0.5rem;">
+        <p id="portalSubtitle">Create shifts for registered clients and monitor read-only timesheet activity.</p>
+        <span id="portalIndustry" class="badge badge--blue" style="white-space:nowrap;">—</span>
+      </div>
+    </div>
+  </div>
+
+  <main>
+    <div class="container portal-main-shell">
+      <div class="portal-section">
+        <div class="portal-section__header">
+          <h2 class="portal-section__title">Create Shift</h2>
+        </div>
+        <form id="schedulingCreateJobForm" class="contact-form" novalidate>
+          <div id="schedulingCreateJobMessage" class="form-message" aria-live="polite"></div>
+          <div class="form-row"><label for="schedulingJobsiteUserId">Client</label><select id="schedulingJobsiteUserId" name="jobsiteUserId" required><option value="">Loading clients...</option></select></div>
+          <div class="form-row"><label for="schedulingTitle">Title</label><input id="schedulingTitle" name="title" type="text" required /></div>
+          <div class="form-row"><label for="schedulingIndustry">Industry</label><input id="schedulingIndustry" name="industry" type="text" required placeholder="warehouse or healthcare" /></div>
+          <div class="form-row"><label for="schedulingSchedule">Schedule</label><input id="schedulingSchedule" name="schedule" type="text" required placeholder="Mon, Apr 1, 2026 8:00 AM until 4:00 PM" /></div>
+          <div class="form-row"><label for="schedulingPayRate">Pay Rate (optional)</label><input id="schedulingPayRate" name="payRate" type="text" /></div>
+          <div class="form-actions"><button class="button" type="submit">Create Shift</button></div>
+        </form>
+      </div>
+
+      <div class="portal-section">
+        <div class="portal-section__header"><h2 class="portal-section__title">Registered Clients</h2></div>
+        <div class="portal-table-wrap">
+          <table class="portal-table">
+            <thead><tr><th>ID</th><th>Client</th><th>Email</th><th>Track</th><th>Address</th></tr></thead>
+            <tbody id="schedulingClientsTbody"><tr><td colspan="5">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="portal-section">
+        <div class="portal-section__header"><h2 class="portal-section__title">Signed Contracts (Read Only)</h2></div>
+        <div class="portal-table-wrap">
+          <table class="portal-table">
+            <thead><tr><th>ID</th><th>Client</th><th>Contract</th><th>Status</th><th>Executed</th><th>Action</th></tr></thead>
+            <tbody id="schedulingContractsTbody"><tr><td colspan="6">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="portal-section">
+        <div class="portal-section__header"><h2 class="portal-section__title">Recent Shifts</h2></div>
+        <div class="portal-table-wrap">
+          <table class="portal-table">
+            <thead><tr><th>ID</th><th>Client</th><th>Title</th><th>Schedule</th><th>Status</th></tr></thead>
+            <tbody id="schedulingJobsTbody"><tr><td colspan="5">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="portal-section">
+        <div class="portal-section__header"><h2 class="portal-section__title">Timesheet Activity (Read Only)</h2></div>
+        <div class="portal-section__controls">
+          <div class="form-row admin-form-row-reset admin-form-row--mid">
+            <label for="schedulingTimesheetExportPeriod">Export Pay Period</label>
+            <select id="schedulingTimesheetExportPeriod">
+              <option value="">All pay periods</option>
+            </select>
+          </div>
+          <div class="form-row admin-form-row-reset admin-form-row--mid">
+            <label for="schedulingTimesheetExportCsvBtn">Payroll Export</label>
+            <button id="schedulingTimesheetExportCsvBtn" class="button button--ghost button--sm" type="button">Download CSV (Excel)</button>
+          </div>
+        </div>
+        <div id="schedulingTimesheetExportMessage" class="form-message" aria-live="polite"></div>
+        <div class="portal-table-wrap">
+          <table class="portal-table">
+            <thead><tr><th>Employee</th><th>Period</th><th>Shift</th><th>Client</th><th>Hours</th><th>Source</th><th>Status</th><th>Signature</th></tr></thead>
+            <tbody id="schedulingTimesheetsTbody"><tr><td colspan="8">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="portal-section">
+        <div class="portal-section__header"><h2 class="portal-section__title">Mandatory Paper Timesheet Reminder Diagnostics</h2></div>
+        <form id="schedulingReminderDiagnosticsForm" class="contact-form" novalidate>
+          <div id="schedulingReminderDiagnosticsMessage" class="form-message" aria-live="polite"></div>
+          <div class="form-row">
+            <label for="schedulingReminderDate">Reference Date</label>
+            <input id="schedulingReminderDate" name="date" type="date" />
+          </div>
+          <div class="form-row">
+            <label for="schedulingReminderWeekOffset">Week Offset</label>
+            <select id="schedulingReminderWeekOffset" name="weekOffset">
+              <option value="0">Current Week</option>
+              <option value="-1">Previous Week</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label for="schedulingReminderType">Reminder Type</label>
+            <select id="schedulingReminderType" name="reminderType">
+              <option value="paper_timesheet_sunday_12pm">Sunday 12:00 PM Reminder</option>
+              <option value="paper_timesheet_monday_8am">Monday 8:00 AM Final Reminder</option>
+            </select>
+          </div>
+          <div class="form-actions">
+            <button class="button button--sm" type="submit">Run Diagnostics</button>
+          </div>
+        </form>
+        <p id="schedulingReminderDiagnosticsSummary" class="admin-section-copy">Run diagnostics to preview eligible employees and reminder lock status for a payroll week.</p>
+        <div class="portal-table-wrap">
+          <table class="portal-table">
+            <thead><tr><th>Employee</th><th>Worked Dates</th><th>Reminder Log</th><th>Mandatory Push Lock</th></tr></thead>
+            <tbody id="schedulingReminderDiagnosticsTbody"><tr><td colspan="4">No diagnostics run yet.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="portal-section">
+        <div class="portal-section__header">
+          <h2 class="portal-section__title">Notifications</h2>
+        </div>
+        <div id="portalNotificationStatus" class="form-message" aria-live="polite"></div>
+        <p id="portalNotificationDescription" class="admin-section-copy">Enable browser notifications to receive alerts when messages, client activity, and scheduling updates need your attention.</p>
+        <div class="form-actions admin-notification-actions">
+          <button id="portalNotificationEnableBtn" class="button button--ghost button--sm" type="button">Enable Push Notifications</button>
+        </div>
+        <div class="notify-prefs-block">
+          <p class="notify-prefs-block__heading">Notification Channels</p>
+          <div class="form-row notify-toggle-row">
+            <span class="notify-toggle__label">Email Notifications</span>
+            <label class="toggle-switch" for="portalNotifyEmailEnabled">
+              <input id="portalNotifyEmailEnabled" name="notifyEmailEnabled" type="checkbox" aria-label="Email notifications" title="Email notifications" />
+              <span class="toggle-switch__track"></span>
+            </label>
+          </div>
+          <div class="form-row notify-toggle-row">
+            <span class="notify-toggle__label">Text Notifications</span>
+            <label class="toggle-switch" for="portalNotifySmsEnabled">
+              <input id="portalNotifySmsEnabled" name="notifySmsEnabled" type="checkbox" aria-label="Text notifications" title="Text notifications" />
+              <span class="toggle-switch__track"></span>
+            </label>
+          </div>
+          <div class="form-row notify-toggle-row">
+            <span class="notify-toggle__label">App Push Notifications</span>
+            <label class="toggle-switch" for="portalNotifyPushEnabled">
+              <input id="portalNotifyPushEnabled" name="notifyPushEnabled" type="checkbox" aria-label="App push notifications" title="App push notifications" />
+              <span class="toggle-switch__track"></span>
+            </label>
+          </div>
+        </div>
+        <div class="admin-inline-row admin-inline-row--end">
+          <button id="portalNotificationsClearReadBtn" class="button button--ghost button--sm" type="button">Clear Read</button>
+        </div>
+        <div class="portal-table-wrap admin-table-wrap-top">
+          <table class="portal-table">
+            <thead><tr><th>When</th><th>Type</th><th>Activity</th><th>Status</th><th>Action</th><th></th></tr></thead>
+            <tbody id="portalNotificationsList"><tr><td colspan="6">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="portal-section">
+        <div class="portal-section__header">
+          <h2 class="portal-section__title">Messages</h2>
+        </div>
+        <form id="portalMessageForm" class="contact-form admin-form-bottom" novalidate>
+          <div id="portalMessageStatus" class="form-message" aria-live="polite"></div>
+          <div class="form-row">
+            <label for="portalMessageRecipient">Recipient</label>
+            <select id="portalMessageRecipient" name="recipientUserId" required>
+              <option value="">Select recipient</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label for="portalMessageBody">Message</label>
+            <textarea id="portalMessageBody" name="body" rows="3" placeholder="Type your message"></textarea>
+          </div>
+          <div class="form-actions">
+            <button class="button" type="submit">Send Message</button>
+          </div>
+        </form>
+        <div id="portalMessagesList" class="portal-chat" aria-live="polite">
+          <div class="portal-chat__empty">Loading conversation...</div>
+        </div>
+      </div>
+
+      <div class="portal-section">
+        <div class="portal-section__header"><h2 class="portal-section__title">Portal Account Settings</h2></div>
+        <form id="portalAccountForm" class="contact-form" novalidate>
+          <div id="portalAccountMessage" class="form-message" aria-live="polite"></div>
+          <div class="form-row"><label for="portalAccountName">Name</label><input id="portalAccountName" type="text" readonly /></div>
+          <div class="form-row"><label for="portalAccountUserId">User ID</label><input id="portalAccountUserId" type="text" readonly /></div>
+          <div class="form-row"><label for="portalAccountEmail">Email</label><input id="portalAccountEmail" type="text" readonly /></div>
+          <div class="form-row"><label for="portalAccountPasswordStatus">Current Password</label><input id="portalAccountPasswordStatus" type="text" value="Hidden for security" readonly /></div>
+          <div class="form-row"><label for="portalCurrentPassword">Current Password or Passcode</label><input id="portalCurrentPassword" name="currentCredential" type="password" required /></div>
+          <div class="form-row"><label for="portalNewEmail">New Email (optional)</label><input id="portalNewEmail" name="newEmail" type="email" /></div>
+          <div class="form-row"><label for="portalNewPassword">New Password (optional)</label><input id="portalNewPassword" name="newPassword" type="password" minlength="8" /></div>
+          <div class="form-row"><label for="portalNewPasscode">New 4-Digit Passcode (optional)</label><input id="portalNewPasscode" name="newPasscode" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" /></div>
+          <div class="form-row admin-checkbox-row"><input id="portalRemovePasscode" name="removePasscode" type="checkbox" class="admin-checkbox" /><label for="portalRemovePasscode" class="admin-label-reset">Remove stored passcode</label></div>
+          <div class="form-actions"><button class="button" type="submit">Save Account</button></div>
+        </form>
+      </div>
+    </div>
+  </main>
+
+  <script src="theme.js"></script>
+  <script src="portal.js?v=20260315-6"></script>
+</body>
+</html>

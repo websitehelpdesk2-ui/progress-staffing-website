@@ -1,0 +1,17 @@
+{
+  "files.watcherExclude": {
+    "**/.git/objects/**": true,
+    "**/.git/subtree-cache/**": true,
+    "**/node_modules/**": true,
+    "**/data/uploads/**": true,
+    "**/data/*.db": true,
+    "**/data/*.db-*": true
+  },
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/data/uploads": true,
+    "**/data/*.db": true,
+    "**/data/*.db-*": true
+  },
+  "typescript.tsserver.maxTsServerMemory": 2048
+}

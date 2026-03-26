@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Portal Login - Progress Staffing Agency</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="apple-touch-icon" href="img.png" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="container header-inner">
+      <a class="logo" href="index.html">
+        <img class="logo__img" src="img.png" alt="Progress Staffing Agency" />
+        <span class="logo__text">Progress Staffing Agency</span>
+      </a>
+      <nav class="nav" aria-label="Portal navigation">
+        <a href="index.html">Home</a>
+        <a href="/portal-register">New User Registration</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="section section--alt">
+      <div class="container">
+        <h1>Portal Login</h1>
+        <p class="section-subtitle">Access the Employee, Jobsite, or Admin portal with your account.</p>
+
+        <form id="portalLoginForm" class="contact-form" novalidate>
+          <div id="portalLoginMessage" class="form-message" aria-live="polite"></div>
+
+          <div class="form-row">
+            <label for="email">Email</label>
+            <input id="email" name="email" type="email" required placeholder="you@example.com" />
+          </div>
+
+          <div class="form-row">
+            <label for="password">Password</label>
+            <input id="password" name="password" type="password" placeholder="Enter password" />
+          </div>
+
+          <p class="disclaimer login-or-text">OR</p>
+
+          <div class="form-row">
+            <label for="loginPasscode">4-Digit Passcode <span class="admin-optional-text">(optional instead of password)</span></label>
+            <input id="loginPasscode" name="passcode" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="1234" />
+          </div>
+
+          <div class="form-actions">
+            <button class="button" type="submit">Sign In</button>
+            <p class="disclaimer">Need an account? <a class="link" href="/portal-register">Create one here</a>.</p>
+          </div>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <script src="theme.js"></script>
+  <script src="portal.js?v=20260315-6"></script>
+</body>
+</html>

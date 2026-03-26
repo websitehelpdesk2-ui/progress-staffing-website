@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Apply – Progress Staffing Agency</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="apple-touch-icon" href="img.png" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="container header-inner">
+      <a class="logo" href="index.html">
+        <img class="logo__img" src="img.png" alt="Progress Staffing Agency" />
+        <span class="logo__text">Progress Staffing Agency</span>
+      </a>
+      <nav class="nav" aria-label="Primary">
+        <a href="index.html">Home</a>
+        <a href="index.html#services">Services</a>
+        <a href="index.html#about">About</a>
+        <a href="portal-login.html">Portal Login</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="section">
+      <div class="container">
+        <div class="apply-header">
+          <h1 id="applyTitle">Apply for a Position</h1>
+          <p id="applyIntro" class="section-subtitle">Complete the short form below to start your application. After submission, you will be redirected to your employee portal setup/login to continue onboarding.</p>
+        </div>
+
+        <form id="applyForm" class="contact-form" action="#" method="POST" novalidate>
+          <div id="formMessage" class="form-message" aria-live="polite"></div>
+
+          <input type="hidden" id="industry" name="industry" value="" />
+          <input type="hidden" id="position" name="position" value="" />
+
+          <div class="form-row">
+            <label for="industryTrackSelect">Industry</label>
+            <select id="industryTrackSelect" name="industryTrackSelect" required>
+              <option value="">Select industry</option>
+              <option value="warehouse">Warehouse</option>
+              <option value="healthcare">Healthcare</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label for="positionSelect">Position Type</label>
+            <select id="positionSelect" name="positionSelect" required disabled>
+              <option value="">Select industry first</option>
+            </select>
+          </div>
+
+          <div class="form-name-group">
+            <div class="form-row">
+              <label for="applyFirstName">First Name</label>
+              <input type="text" id="applyFirstName" name="firstName" placeholder="Jane" required autocomplete="given-name" />
+            </div>
+            <div class="form-row">
+              <label for="applyMiddleInitial">Middle Initial <span class="admin-optional-text">(optional)</span></label>
+              <input type="text" id="applyMiddleInitial" name="middleInitial" placeholder="M" maxlength="1" autocomplete="additional-name" />
+            </div>
+            <div class="form-row">
+              <label for="applyLastName">Last Name</label>
+              <input type="text" id="applyLastName" name="lastName" placeholder="Doe" required autocomplete="family-name" />
+            </div>
+          </div>
+          <div class="form-row">
+            <label for="email">Email</label>
+            <input type="email" id="email" name="email" placeholder="you@example.com" required />
+          </div>
+          <div class="form-row">
+            <label for="phone">Phone</label>
+            <input type="tel" id="phone" name="phone" placeholder="(555) 555-1234" inputmode="numeric" maxlength="14" required />
+          </div>
+          <div class="form-row">
+            <label for="address">Address</label>
+            <input type="text" id="address" name="address" placeholder="123 Main St" required />
+          </div>
+          <div class="form-row">
+            <label for="city">City</label>
+            <input type="text" id="city" name="city" placeholder="Las Vegas" required />
+          </div>
+          <div class="form-row">
+            <label for="state">State</label>
+            <input type="text" id="state" name="state" placeholder="NV" maxlength="2" required />
+          </div>
+          <div class="form-row">
+            <label for="zip">Zip Code</label>
+            <input type="text" id="zip" name="zip" placeholder="89148" inputmode="numeric" maxlength="10" required />
+          </div>
+          <div class="form-row">
+            <label for="certifyAgreement" class="certify-label">Certification Statement (Required)</label>
+            <p class="disclaimer certify-disclaimer">
+              I certify that the facts set forth in this application for Employment are true and complete to the best of my knowledge. I understand that if I am employed, false statements, omissions or misinterpretations may result in my dismissal. I authorize the Employer to make an investigation of any of the facts set forth in this application and release the employer any liability. The Employer may contact any listed references on this application. I acknowledge and understand that the company is an "at will" employer. Therefore, any employee (regular, temporary, or other type of category employee) may resign at any time, just as the employer may terminate the employment relationship with any employee at any time, with or without cause, with or without notice to the other party.
+            </p>
+            <label class="certify-check-label">
+              <input id="certifyAgreement" name="certifyAgreement" type="checkbox" required class="certify-checkbox" />
+              <span>I have read and agree to the certification statement above.</span>
+            </label>
+          </div>
+          <div class="portal-section portal-section--compact">
+            <div class="portal-section__header portal-section__header--tight">
+              <h2 class="portal-section__title portal-section__title--sm">Complete Your Portal Account</h2>
+            </div>
+            <p class="section-subtitle section-subtitle--mb9">Create your employee login now so registration finishes with this application.</p>
+            <div class="form-row">
+              <label for="applyPassword">Create Password</label>
+              <input type="password" id="applyPassword" name="password" placeholder="At least 8 characters" minlength="8" required />
+            </div>
+            <div class="form-row">
+              <label for="applyPasscode">Create 4-Digit Passcode <span class="admin-optional-text">(optional for quick sign-in and shift confirmations)</span></label>
+              <input type="password" id="applyPasscode" name="passcode" placeholder="1234" inputmode="numeric" maxlength="4" />
+            </div>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="button">Submit Application and Complete Registration</button>
+            <p class="disclaimer">By submitting, you agree to our <a href="privacy-policy.html" class="link">privacy policy</a>.</p>
+          </div>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <div class="footer-brand">
+        <strong>Progress Staffing Agency</strong>
+        <p>Supporting warehouse and healthcare workforce growth.</p>
+      </div>
+      <div class="footer-links">
+        <div>
+          <h4>Quick Links</h4>
+          <a href="index.html#services">Services</a>
+          <a href="index.html#about">About</a>
+          <a href="apply.html">Apply</a>
+          <a href="portal-login.html">Portal Login</a>
+          <a href="privacy-policy.html">Privacy Policy</a>
+          <a href="cookie-policy.html">Cookie Policy</a>
+        </div>
+        <div>
+          <h4>Contact</h4>
+          <p>Email: <a class="link" href="mailto:hello@progressstaffing.com">hello@progressstaffing.com</a></p>
+          <p>Phone: <a class="link" href="tel:+15555551234">(555) 555-1234</a></p>
+        </div>
+      </div>
+    </div>
+    <div class="footer-copy">
+      <p>&copy; <span id="year"></span> Progress Staffing Agency. All rights reserved.</p>
+    </div>
+  </footer>
+
+  <script src="theme.js"></script>
+  <script>
+    const yearEl = document.getElementById('year');
+    if (yearEl) yearEl.textContent = new Date().getFullYear();
+
+    const params = new URLSearchParams(window.location.search);
+    const position = params.get('position') || '';
+    const industry = (params.get('industry') || '').toLowerCase();
+    const EMPLOYEE_REGISTRATION_OPTIONS = {
+      warehouse: [
+        { industry: 'warehouse', position: 'Forklift Operator' },
+        { industry: 'warehouse', position: 'Material Handler' },
+        { industry: 'warehouse', position: 'Pick / Pack Specialist' },
+        { industry: 'warehouse', position: 'Inventory Control' },
+      ],
+      healthcare: [
+        { industry: 'cna', position: 'Certified Nursing Assistant (CNA)' },
+        { industry: 'lpn', position: 'Licensed Practical Nurse (LPN)' },
+        { industry: 'rn', position: 'Registered Nurse (RN)' },
+        { industry: 'cma', position: 'Certified Medical Assistant (CMA)' },
+        { industry: 'dietary', position: 'Dietary Aide' },
+      ],
+    };
+    const HEALTHCARE_INDUSTRIES = new Set(['cna', 'cma', 'rn', 'lpn', 'lvn', 'dietary']);
+
+    const industryField = document.getElementById('industry');
+    const positionField = document.getElementById('position');
+    const industryTrackSelect = document.getElementById('industryTrackSelect');
+    const positionSelect = document.getElementById('positionSelect');
+    const applyTitle = document.getElementById('applyTitle');
+    const applyIntro = document.getElementById('applyIntro');
+
+    function normalizeIndustryTrack(value) {
+      const normalized = String(value || '').trim().toLowerCase();
+      if (normalized === 'healthcare' || HEALTHCARE_INDUSTRIES.has(normalized)) return 'healthcare';
+      if (normalized === 'warehouse') return 'warehouse';
+      return '';
+    }
+
+    function updateApplyHeader(selectedPosition = '') {
+      if (selectedPosition) {
+        applyTitle.textContent = `Apply for ${selectedPosition}`;
+        applyIntro.textContent = `You are applying for the ${selectedPosition} position. Complete the form below and we'll reach out with next steps.`;
+        return;
+      }
+
+      applyTitle.textContent = 'Apply for a Position';
+      applyIntro.textContent = 'Complete the short form below to start your application. After submission, you will be redirected to your employee portal setup/login to continue onboarding.';
+    }
+
+    function populatePositionOptions(track, selectedIndustry = '', selectedPosition = '') {
+      if (!positionSelect) return;
+
+      const options = EMPLOYEE_REGISTRATION_OPTIONS[track] || [];
+      positionSelect.innerHTML = '';
+
+      const placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = options.length ? 'Select position type' : 'Select industry first';
+      positionSelect.appendChild(placeholder);
+      positionSelect.disabled = !options.length;
+
+      options.forEach((item) => {
+        const option = document.createElement('option');
+        option.value = item.position;
+        option.textContent = item.position;
+        option.dataset.industry = item.industry;
+        positionSelect.appendChild(option);
+      });
+
+      const matchedOption = options.find(
+        (item) => item.industry === selectedIndustry && item.position === selectedPosition
+      );
+
+      if (matchedOption) {
+        positionSelect.value = matchedOption.position;
+        if (industryField) industryField.value = matchedOption.industry;
+        if (positionField) positionField.value = matchedOption.position;
+      } else {
+        positionSelect.value = '';
+        if (industryField) industryField.value = '';
+        if (positionField) positionField.value = '';
+      }
+
+      updateApplyHeader(positionField ? positionField.value : '');
+    }
+
+    const selectedTrack = normalizeIndustryTrack(industry);
+    if (industryTrackSelect && selectedTrack) {
+      industryTrackSelect.value = selectedTrack;
+    }
+    if (industryField) industryField.value = industry;
+    if (positionField) positionField.value = position;
+    populatePositionOptions(selectedTrack, industry, position);
+
+    if (industryTrackSelect) {
+      industryTrackSelect.addEventListener('change', () => {
+        const nextTrack = normalizeIndustryTrack(industryTrackSelect.value);
+        populatePositionOptions(nextTrack);
+      });
+    }
+
+    if (positionSelect) {
+      positionSelect.addEventListener('change', () => {
+        const selectedOption = positionSelect.options[positionSelect.selectedIndex];
+        if (industryField) industryField.value = selectedOption ? String(selectedOption.dataset.industry || '').trim() : '';
+        if (positionField) positionField.value = String(positionSelect.value || '').trim();
+        updateApplyHeader(positionField ? positionField.value : '');
+      });
+    }
+
+    const form = document.getElementById('applyForm');
+    const formMessage = document.getElementById('formMessage');
+    const phoneField = document.getElementById('phone');
+    const stateField = document.getElementById('state');
+    const zipField = document.getElementById('zip');
+    const tokenKey = 'psa_portal_token';
+
+    function toPhoneDigits(value) {
+      return String(value || '').replace(/\D/g, '');
+    }
+
+    function formatPhoneDisplay(value) {
+      const digits = toPhoneDigits(value).slice(0, 10);
+      if (!digits) return '';
+      if (digits.length <= 3) return `(${digits}`;
+      if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
+      return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+    }
+
+    function toZipDigits(value) {
+      return String(value || '').replace(/\D/g, '');
+    }
+
+    async function lookupCityStateByZip(zipCode) {
+      const zipDigits = toZipDigits(zipCode).slice(0, 5);
+      if (zipDigits.length !== 5) return null;
+
+      try {
+        const response = await fetch(`https://api.zippopotam.us/us/${zipDigits}`);
+        if (!response.ok) return null;
+
+        const payload = await response.json().catch(() => null);
+        const place = payload && Array.isArray(payload.places) ? payload.places[0] : null;
+        if (!place) return null;
+
+        return {
+          city: String(place['place name'] || '').trim(),
+          state: String(place['state abbreviation'] || '').trim().toUpperCase(),
+        };
+      } catch (_error) {
+        return null;
+      }
+    }
+
+    function showFormMessage(message, isError = false) {
+      if (!formMessage) return;
+      formMessage.textContent = message;
+      formMessage.style.display = message ? 'block' : 'none';
+      formMessage.className = `form-message ${isError ? 'form-message--error' : 'form-message--success'}`;
+    }
+
+    async function postApplication(data) {
+      const response = await fetch('/api/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}));
+        throw new Error(result?.error || 'Failed to submit application.');
+      }
+
+      return response.json();
+    }
+
+    function bindPasswordToggle(input) {
+      if (!input) return;
+      const row = input.closest('.form-row');
+      if (!row) return;
+
+      const toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.className = 'button button--ghost button--sm';
+      toggle.textContent = 'Show';
+      toggle.style.marginTop = '0.5rem';
+      toggle.addEventListener('click', () => {
+        const isPassword = input.type === 'password';
+        input.type = isPassword ? 'text' : 'password';
+        toggle.textContent = isPassword ? 'Hide' : 'Show';
+      });
+
+      row.appendChild(toggle);
+    }
+
+    if (form) {
+      bindPasswordToggle(form.password);
+      bindPasswordToggle(form.passcode);
+
+      if (phoneField) {
+        phoneField.addEventListener('input', () => {
+          phoneField.value = formatPhoneDisplay(phoneField.value);
+        });
+        phoneField.addEventListener('blur', () => {
+          phoneField.value = formatPhoneDisplay(phoneField.value);
+        });
+      }
+
+      if (stateField) {
+        stateField.addEventListener('input', () => {
+          stateField.value = String(stateField.value || '').replace(/[^a-z]/gi, '').toUpperCase().slice(0, 2);
+        });
+      }
+
+      if (zipField) {
+        zipField.addEventListener('input', () => {
+          zipField.value = toZipDigits(zipField.value).slice(0, 10);
+        });
+
+        const autoFillFromZip = async () => {
+          const lookup = await lookupCityStateByZip(zipField.value);
+          if (!lookup) return;
+          if (form.city) form.city.value = lookup.city;
+          if (form.state) form.state.value = lookup.state;
+        };
+
+        zipField.addEventListener('change', autoFillFromZip);
+        zipField.addEventListener('blur', autoFillFromZip);
+      }
+
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+
+        const submitButton = form.querySelector('button[type="submit"]');
+        if (submitButton) submitButton.disabled = true;
+
+        const phoneDigits = toPhoneDigits(form.phone.value);
+        if (phoneDigits.length !== 10) {
+          showFormMessage('Phone number must be exactly 10 digits.', true);
+          if (submitButton) submitButton.disabled = false;
+          return;
+        }
+
+        const stateValue = String(form.state.value || '').trim().toUpperCase();
+        if (!/^[A-Z]{2}$/.test(stateValue)) {
+          showFormMessage('State must be a 2-letter code (example: NV).', true);
+          if (submitButton) submitButton.disabled = false;
+          return;
+        }
+
+        const zipDigits = toZipDigits(form.zip.value);
+        if (!(zipDigits.length === 5 || zipDigits.length === 9)) {
+          showFormMessage('Zip code must be 5 or 9 digits.', true);
+          if (submitButton) submitButton.disabled = false;
+          return;
+        }
+
+        if (!form.industry.value || !form.position.value) {
+          showFormMessage('Application role details are missing. Please start from a job listing and try again.', true);
+          if (submitButton) submitButton.disabled = false;
+          return;
+        }
+
+        const applyFirstName = form.firstName ? form.firstName.value.trim() : '';
+        const applyLastName = form.lastName ? form.lastName.value.trim() : '';
+        const applyMiddleInitial = form.middleInitial ? String(form.middleInitial.value || '').trim().replace(/[^a-zA-Z]/g, '').slice(0, 1) : '';
+        if (!applyFirstName || !applyLastName) {
+          showFormMessage('First name and last name are required.', true);
+          if (submitButton) submitButton.disabled = false;
+          return;
+        }
+
+        const formData = {
+          fullName: [applyFirstName, applyMiddleInitial, applyLastName].filter(Boolean).join(' '),
+          email: form.email.value.trim(),
+          phone: phoneDigits,
+          address: form.address.value.trim(),
+          city: form.city.value.trim(),
+          state: stateValue,
+          zip: zipDigits,
+          password: form.password.value,
+          passcode: form.passcode.value.trim(),
+          industry: form.industry.value,
+          position: form.position.value,
+          certifyAgreement: form.certifyAgreement.checked,
+        };
+
+        if (formData.password.length < 8) {
+          showFormMessage('Password must be at least 8 characters.', true);
+          if (submitButton) submitButton.disabled = false;
+          return;
+        }
+
+        if (formData.passcode && !/^\d{4}$/.test(formData.passcode)) {
+          showFormMessage('Passcode must be exactly 4 digits.', true);
+          if (submitButton) submitButton.disabled = false;
+          return;
+        }
+
+        try {
+          const result = await postApplication(formData);
+          const nextStepUrl = result?.nextStepUrl || '/portal-login';
+          if (result?.token) {
+            localStorage.setItem(tokenKey, result.token);
+          }
+          showFormMessage(result?.token ? 'Application and account setup complete. Redirecting to your portal...' : 'Application submitted. Redirecting to your portal sign-in...', false);
+          setTimeout(() => {
+            window.location.href = nextStepUrl;
+          }, 900);
+        } catch (error) {
+          showFormMessage(error.message, true);
+        } finally {
+          if (submitButton) submitButton.disabled = false;
+        }
+      });
+    }
+  </script>
+</body>
+</html>

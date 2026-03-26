@@ -2363,6 +2363,10 @@ function authGuard(allowedRoles = []) {
     const user = getSessionUser(token);
 
     if (!user) {
+      const isApiRequest = (req.path || '').startsWith('/api/') || !(req.headers.accept || '').includes('text/html');
+      if (!isApiRequest) {
+        return res.redirect(302, `/portal-login?redirect=${encodeURIComponent(req.originalUrl || req.path)}`);
+      }
       return res.status(401).json({ error: 'Unauthorized' });
     }
 

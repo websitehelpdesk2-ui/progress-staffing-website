@@ -1293,6 +1293,7 @@ function canAdminViewEmployee(admin, employeeId, employeeIndustryTrack) {
   if (!admin || String(admin.role || '').toLowerCase() !== 'admin') return false;
   
   // Full-scope admins can view all employees
+  if (normalizeAdminScope(admin.portalScope) === 'full') return true;
   if (!admin.adminEmployeeIndustryTrack || String(admin.adminEmployeeIndustryTrack || '').trim() === '') {
     return true;
   }

@@ -8939,13 +8939,6 @@ function bindAdminForms(currentUser) {
           `;
           setMessage(detailMsg, 'Signed Healthcare Compensation Agreement record loaded.', 'success');
         } else {
-            <div class="profile-info__item"><span class="profile-info__label">Handbook Version</span><span>${escapeHtml(form.handbookVersion || 'v1')}</span></div>
-            <div class="profile-info__item"><span class="profile-info__label">IP Address</span><span>${escapeHtml(form.ipAddress || 'Not stored')}</span></div>
-            <div class="profile-info__item"><span class="profile-info__label">User Agent</span><span>${escapeHtml(form.userAgent || 'Not stored')}</span></div>
-            <div class="profile-info__item"><span class="profile-info__label">Completed Copy</span><span><a class="link" href="${escapeHtml(noticeUrl)}" target="_blank" rel="noopener">Open signed form</a></span></div>
-          `;
-          setMessage(detailMsg, 'Signed Employee Handbook record loaded.', 'success');
-        } else {
           body.innerHTML = '';
           setMessage(detailMsg, 'No onboarding form details are available for this employee.', 'error');
         }

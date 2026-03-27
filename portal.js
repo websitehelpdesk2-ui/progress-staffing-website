@@ -1875,6 +1875,7 @@ async function handlePasskeyLoginClick(form) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email }),
+      _skipAuthRedirect: true,
     });
     const optionsPayload = await optionsRes.json().catch(() => ({}));
     if (!optionsRes.ok || !optionsPayload.options) {
@@ -1895,6 +1896,7 @@ async function handlePasskeyLoginClick(form) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, response: buildPasskeyAuthenticationPayload(assertion) }),
+      _skipAuthRedirect: true,
     });
     const verifyPayload = await verifyRes.json().catch(() => ({}));
     if (!verifyRes.ok) {
@@ -4570,6 +4572,7 @@ async function handlePortalRegisterSubmit(event) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
+    _skipAuthRedirect: true,
   });
 
   if (!res.ok) {
@@ -4582,6 +4585,7 @@ async function handlePortalRegisterSubmit(event) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email: payload.email, password: payload.password, passcode: '' }),
+    _skipAuthRedirect: true,
   });
 
   if (!loginRes.ok) {
@@ -10629,6 +10633,7 @@ async function initPortalPage() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ identifier }),
+            _skipAuthRedirect: true,
           });
           const payload = await res.json().catch(() => ({}));
           if (!res.ok) {
@@ -10668,6 +10673,7 @@ async function initPortalPage() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ token: tokenField ? tokenField.value : '', newPassword }),
+            _skipAuthRedirect: true,
           });
           const payload = await res.json().catch(() => ({}));
           if (!res.ok) {

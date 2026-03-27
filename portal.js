@@ -2575,14 +2575,9 @@ async function handlePortalNotificationAction(item) {
     return;
   }
 
-  if (pageType === 'admin' && metadata.employeeId) {
+  const adminPages = new Set(['admin', 'onboarding', 'scheduling']);
+  if (item.category === 'document' && adminPages.has(pageType) && metadata.employeeId) {
     await loadAdminEmployeeDetail(asInt(metadata.employeeId));
-    return;
-  }
-
-  if (pageType === 'admin' && metadata.timesheetId) {
-    const timesheetSection = document.getElementById('adminTimesheetsSection');
-    if (timesheetSection) timesheetSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
     return;
   }
 
@@ -2806,16 +2801,16 @@ async function handlePortalNotificationIntent(currentUser) {
     if (uploadSection) openPortalDrawerById('employeeUploadSection');
   }
 
-  if (task === 'timesheet-review' && String(document.body?.dataset?.portalPage || '').toLowerCase() === 'admin') {
-    const timesheetSection = document.getElementById('adminTimesheetsSection');
-    if (timesheetSection) timesheetSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
-
   if (task === 'employee-profile' && String(document.body?.dataset?.portalPage || '').toLowerCase() === 'admin') {
     const employeeId = asInt(params.get('employeeId'));
     if (Number.isInteger(employeeId) && employeeId > 0) {
       await loadAdminEmployeeDetail(employeeId);
     }
+  }
+
+  if (task === 'timesheet-review' && String(document.body?.dataset?.portalPage || '').toLowerCase() === 'admin') {
+    const timesheetSection = document.getElementById('adminTimesheetsSection');
+    if (timesheetSection) timesheetSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   clearUrlParams(['task', 'employeeId', 'docId', 'contractId', 'track', 'timesheetId']);

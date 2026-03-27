@@ -10494,6 +10494,115 @@ async function initPortalPage() {
     if (user) {
       window.location.href = user && user.homePath ? user.homePath : routeForRole(user.role, user.portalScope);
     }
+
+    // Handle ?resetToken= in URL — show the reset password form
+    const resetToken = params.get('resetToken');
+    if (resetToken) {
+      const loginFormEl = document.getElementById('portalLoginForm');
+      const resetSection = document.getElementById('resetPasswordSection');
+      const resetTokenField = document.getElementById('resetToken');
+      if (loginFormEl) loginFormEl.hidden = true;
+      if (resetSection) resetSection.hidden = false;
+      if (resetTokenField) resetTokenField.value = resetToken;
+    }
+
+    // Forgot password toggle
+    const showForgotLink = document.getElementById('showForgotPasswordLink');
+    const forgotSection = document.getElementById('forgotPasswordSection');
+    const cancelForgotBtn = document.getElementById('cancelForgotPasswordBtn');
+    const forgotForm = document.getElementById('forgotPasswordForm');
+    const resetForm = document.getElementById('resetPasswordForm');
+    const loginFormMain = document.getElementById('portalLoginForm');
+
+    if (showForgotLink && forgotSection) {
+      showForgotLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (loginFormMain) loginFormMain.hidden = true;
+        forgotSection.hidden = false;
+        const forgotInput = document.getElementById('forgotIdentifier');
+        if (forgotInput) forgotInput.focus();
+      });
+    }
+
+    if (cancelForgotBtn && forgotSection) {
+      cancelForgotBtn.addEventListener('click', () => {
+        forgotSection.hidden = true;
+        if (loginFormMain) loginFormMain.hidden = false;
+      });
+    }
+
+    if (forgotForm) {
+      forgotForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const msg = document.getElementById('forgotPasswordMessage');
+        const identifier = String(forgotForm.identifier ? forgotForm.identifier.value : '').trim();
+        const btn = forgotForm.querySelector('[type="submit"]');
+        if (!identifier) {
+          setMessage(msg, 'Please enter your email or phone number.', 'error');
+          return;
+        }
+        if (btn) btn.disabled = true;
+        setMessage(msg, 'Sending reset link...', 'neutral');
+        try {
+          const res = await apiFetch('/api/auth/forgot-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ identifier }),
+          });
+          const payload = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            setMessage(msg, payload.error || 'Unable to send reset link. Please try again.', 'error');
+          } else {
+            setMessage(msg, payload.message || 'If an account was found, a reset link has been sent.', 'success');
+            forgotForm.reset();
+          }
+        } catch (_err) {
+          setMessage(msg, 'Unable to send reset link. Please check your connection and try again.', 'error');
+        } finally {
+          if (btn) btn.disabled = false;
+        }
+      });
+    }
+
+    if (resetForm) {
+      resetForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const msg = document.getElementById('resetPasswordMessage');
+        const tokenField = document.getElementById('resetToken');
+        const newPassword = String(resetForm.newPassword ? resetForm.newPassword.value : '');
+        const confirmPassword = String(resetForm.confirmPassword ? resetForm.confirmPassword.value : '');
+        const btn = resetForm.querySelector('[type="submit"]');
+        if (newPassword.length < 8) {
+          setMessage(msg, 'Password must be at least 8 characters.', 'error');
+          return;
+        }
+        if (newPassword !== confirmPassword) {
+          setMessage(msg, 'Passwords do not match.', 'error');
+          return;
+        }
+        if (btn) btn.disabled = true;
+        setMessage(msg, 'Updating password...', 'neutral');
+        try {
+          const res = await apiFetch('/api/auth/reset-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: tokenField ? tokenField.value : '', newPassword }),
+          });
+          const payload = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            setMessage(msg, payload.error || 'Unable to reset password. The link may have expired.', 'error');
+          } else {
+            setMessage(msg, 'Password updated successfully! Redirecting to sign in...', 'success');
+            setTimeout(() => { window.location.href = '/portal-login'; }, 2000);
+          }
+        } catch (_err) {
+          setMessage(msg, 'Unable to reset password. Please check your connection and try again.', 'error');
+        } finally {
+          if (btn) btn.disabled = false;
+        }
+      });
+    }
+
     return;
   }
 

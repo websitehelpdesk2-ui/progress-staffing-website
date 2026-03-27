@@ -54,8 +54,50 @@
           <div class="form-actions">
             <button class="button" type="submit">Sign In</button>
             <p class="disclaimer">Need an account? <a class="link" href="/portal-register">Create one here</a>.</p>
+            <p class="disclaimer"><a class="link" href="#" id="showForgotPasswordLink">Forgot password?</a></p>
           </div>
         </form>
+
+        <!-- Forgot Password Form -->
+        <div id="forgotPasswordSection" hidden>
+          <hr style="margin: 2rem 0;" />
+          <h2>Reset Your Password</h2>
+          <p class="section-subtitle">Enter your email address or phone number on file. We'll send you a reset link.</p>
+          <form id="forgotPasswordForm" class="contact-form" novalidate>
+            <div id="forgotPasswordMessage" class="form-message" aria-live="polite"></div>
+            <div class="form-row">
+              <label for="forgotIdentifier">Email or Phone Number</label>
+              <input id="forgotIdentifier" name="identifier" type="text" required placeholder="you@example.com or 555-123-4567" />
+            </div>
+            <div class="form-actions">
+              <button class="button" type="submit">Send Reset Link</button>
+              <button class="button button--ghost" type="button" id="cancelForgotPasswordBtn">Cancel</button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Reset Password Form (shown when ?resetToken= is in URL) -->
+        <div id="resetPasswordSection" hidden>
+          <hr style="margin: 2rem 0;" />
+          <h2>Set New Password</h2>
+          <p class="section-subtitle">Enter a new password for your account.</p>
+          <form id="resetPasswordForm" class="contact-form" novalidate>
+            <div id="resetPasswordMessage" class="form-message" aria-live="polite"></div>
+            <input type="hidden" id="resetToken" name="resetToken" />
+            <div class="form-row">
+              <label for="resetNewPassword">New Password</label>
+              <input id="resetNewPassword" name="newPassword" type="password" minlength="8" required placeholder="At least 8 characters" />
+            </div>
+            <div class="form-row">
+              <label for="resetConfirmPassword">Confirm New Password</label>
+              <input id="resetConfirmPassword" name="confirmPassword" type="password" required placeholder="Repeat new password" />
+            </div>
+            <div class="form-actions">
+              <button class="button" type="submit">Set New Password</button>
+            </div>
+          </form>
+        </div>
+
       </div>
     </section>
   </main>

@@ -61,6 +61,8 @@ const SENSITIVE_PASSKEY_ACTIONS = new Set([
 
 const passkeyChallenges = new Map();
 const passkeyActionProofs = new Map();
+const passwordResetTokens = new Map();
+const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 function resolvePasskeyRpId() {
   if (process.env.WEBAUTHN_RP_ID) {
@@ -3908,6 +3910,8 @@ app.use('/api/auth/login', loginLimiter);
 app.use('/api/auth/passkey/login', loginLimiter);
 app.use('/api/auth/passkey/action', loginLimiter);
 app.use('/api/auth/register', registerLimiter);
+app.use('/api/auth/forgot-password', createLimiter(15 * 60 * 1000, 5, 'Too many password reset requests. Please try again later.'));
+app.use('/api/auth/reset-password', createLimiter(15 * 60 * 1000, 10, 'Too many password reset attempts. Please try again later.'));
 app.use('/api/apply', applyLimiter);
 app.use('/api/portal/employee/documents', uploadLimiter);
 app.use(express.static(path.join(__dirname)));
@@ -5511,6 +5515,114 @@ app.post('/api/auth/logout', authGuard(), (req, res) => {
   db.prepare('DELETE FROM sessions WHERE tokenHash = ?').run(req.auth.tokenHash);
   clearSessionCookie(res);
   res.status(204).send();
+});
+
+app.post('/api/auth/forgot-password', async (req, res) => {
+  const identifier = String(req.body && req.body.identifier || '').trim().toLowerCase();
+  if (!identifier) {
+    return res.status(400).json({ error: 'Email or phone number is required.' });
+  }
+
+  // Always return the same response to prevent user enumeration
+  const genericOk = () => res.json({ sent: true, message: 'If an account was found, a reset link has been sent.' });
+
+  let user = null;
+  let deliveryMode = null;
+  let deliveryTarget = null;
+
+  // Try email match first
+  const emailUser = db.prepare('SELECT id, name, email, role, isActive FROM users WHERE email = ?').get(identifier);
+  if (emailUser && emailUser.isActive) {
+    user = emailUser;
+    deliveryMode = 'email';
+    deliveryTarget = user.email;
+  }
+
+  // Try phone match if no email match
+  if (!user) {
+    const normalizedPhone = normalizePhoneNumber(identifier);
+    if (normalizedPhone) {
+      const epRow = db.prepare(
+        `SELECT u.id, u.name, u.email, u.role, u.isActive, ep.phone
+         FROM users u JOIN employee_profiles ep ON ep.userId = u.id
+         WHERE ep.phone = ? AND u.isActive = 1 LIMIT 1`
+      ).get(normalizedPhone);
+      if (epRow) { user = epRow; deliveryMode = 'sms'; deliveryTarget = normalizedPhone; }
+
+      if (!user) {
+        const jpRow = db.prepare(
+          `SELECT u.id, u.name, u.email, u.role, u.isActive, jp.phone
+           FROM users u JOIN jobsite_profiles jp ON jp.userId = u.id
+           WHERE jp.phone = ? AND u.isActive = 1 LIMIT 1`
+        ).get(normalizedPhone);
+        if (jpRow) { user = jpRow; deliveryMode = 'sms'; deliveryTarget = normalizedPhone; }
+      }
+
+      if (!user) {
+        const adminRow = db.prepare(
+          `SELECT id, name, email, role, isActive FROM users WHERE phone = ? AND isActive = 1 LIMIT 1`
+        ).get(normalizedPhone);
+        if (adminRow) { user = adminRow; deliveryMode = 'sms'; deliveryTarget = normalizedPhone; }
+      }
+    }
+  }
+
+  if (!user || !deliveryMode) return genericOk();
+
+  // Generate a secure single-use token
+  const rawToken = crypto.randomBytes(32).toString('hex');
+  const tokenHash = hashToken(rawToken);
+  passwordResetTokens.set(tokenHash, {
+    userId: user.id,
+    expiresAt: Date.now() + RESET_TOKEN_TTL_MS,
+  });
+
+  const resetUrl = `${APP_BASE_URL}/portal-login?resetToken=${encodeURIComponent(rawToken)}`;
+
+  try {
+    if (deliveryMode === 'email') {
+      const subject = 'Progress Staffing Agency — Password Reset';
+      const text = `Hi ${user.name || 'there'},\n\nYou requested a password reset. Click the link below to set a new password. This link expires in 1 hour.\n\n${resetUrl}\n\nIf you did not request this, please ignore this email.`;
+      const html = `<p>Hi ${escapeHtmlText(user.name || 'there')},</p><p>You requested a password reset. Click the link below to set a new password. This link expires in 1 hour.</p><p><a href="${resetUrl}">Reset My Password</a></p><p>If you did not request this, please ignore this email.</p>`;
+      await sendEmailNotification(deliveryTarget, subject, text, html);
+    } else if (deliveryMode === 'sms') {
+      const body = `Progress Staffing: Reset your password here (expires in 1 hour): ${resetUrl}`;
+      await sendSmsNotification(deliveryTarget, body);
+    }
+  } catch (_error) {
+    // Don't expose delivery errors to prevent enumeration
+  }
+
+  return genericOk();
+});
+
+app.post('/api/auth/reset-password', (req, res) => {
+  const rawToken = String(req.body && req.body.token || '').trim();
+  const newPassword = String(req.body && req.body.newPassword || '');
+
+  if (!rawToken) return res.status(400).json({ error: 'Reset token is required.' });
+  if (!newPassword || newPassword.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+
+  const tokenHash = hashToken(rawToken);
+  const record = passwordResetTokens.get(tokenHash);
+
+  if (!record || record.expiresAt < Date.now()) {
+    passwordResetTokens.delete(tokenHash);
+    return res.status(400).json({ error: 'This reset link has expired or is invalid. Please request a new one.' });
+  }
+
+  passwordResetTokens.delete(tokenHash); // Single-use
+
+  const user = db.prepare('SELECT id, isActive FROM users WHERE id = ?').get(record.userId);
+  if (!user || !user.isActive) return res.status(404).json({ error: 'Account not found.' });
+
+  const { salt, hash } = hashPassword(newPassword);
+  db.prepare('UPDATE users SET passwordHash = ?, passwordSalt = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?').run(hash, salt, user.id);
+
+  // Invalidate all existing sessions for this user for security
+  db.prepare('DELETE FROM sessions WHERE userId = ?').run(user.id);
+
+  return res.json({ reset: true, message: 'Password updated successfully. You can now sign in with your new password.' });
 });
 
 app.get('/api/auth/me', authGuard(), (req, res) => {

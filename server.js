@@ -3362,7 +3362,7 @@ function formatFormTimestamp(value) {
   });
 }
 
-function renderSignedOnboardingFormHtml(formType, formRecord) {
+function renderSignedOnboardingFormHtml(formType, formRecord, renderOptions = {}) {
   const normalizedType = String(formType || '').trim().toLowerCase();
   const employeeName = escapeHtmlDocument(formRecord?.legalName || formRecord?.name || 'Employee');
   const signatureName = escapeHtmlDocument(formRecord?.signatureName || formRecord?.legalName || 'Employee');
@@ -3466,20 +3466,31 @@ function renderSignedOnboardingFormHtml(formType, formRecord) {
       <p>By signing electronically, I confirm that I have read this Employee Handbook in full, understand the policies and expectations described, and agree to follow them on every assignment.</p>
     `
     : normalizedType === 'compensation-agreement'
-    ? `
+    ? (() => {
+      const allRates = [
+        { key: 'cna', label: 'CNA (Certified Nursing Assistant)', local: '$25.00 / hr', travel: '$30.00 / hr' },
+        { key: 'cma', label: 'CMA (Certified Medication Aide)', local: '$25.00 / hr', travel: '$30.00 / hr' },
+        { key: 'lpn', label: 'LPN (Licensed Practical Nurse)', local: '$40.00 / hr', travel: '$50.00 / hr' },
+        { key: 'rn',  label: 'RN (Registered Nurse)',           local: '$50.00 / hr', travel: '$60.00 / hr' },
+      ];
+      const pos = String(renderOptions.employeePosition || '').trim().toLowerCase();
+      const matched = allRates.filter(r => new RegExp(`\\b${r.key}\\b`).test(pos));
+      const rates = matched.length ? matched : allRates;
+      const rowStyle = (i) => i % 2 === 1 ? ' style="background:#f7fbf8"' : '';
+      const rows = rates.map((r, i) =>
+        `<tr${rowStyle(i)}><td style="padding:7px 10px;border:1px solid #c8d8cf">${r.label}</td><td style="padding:7px 10px;border:1px solid #c8d8cf">${r.local}</td><td style="padding:7px 10px;border:1px solid #c8d8cf">${r.travel}</td></tr>`
+      ).join('\n          ');
+      return `
       <h2>Pay Rate Schedule</h2>
       <p>I acknowledge and agree to the following hourly pay rates applicable to my licensed role:</p>
       <table style="width:100%;border-collapse:collapse;font-size:15px;margin-bottom:1rem">
         <thead><tr style="background:#e4f1ea"><th style="text-align:left;padding:8px 10px;border:1px solid #c8d8cf">Role</th><th style="text-align:left;padding:8px 10px;border:1px solid #c8d8cf">Local Pay Rate</th><th style="text-align:left;padding:8px 10px;border:1px solid #c8d8cf">Travel Pay Rate</th></tr></thead>
         <tbody>
-          <tr><td style="padding:7px 10px;border:1px solid #c8d8cf">CNA (Certified Nursing Assistant)</td><td style="padding:7px 10px;border:1px solid #c8d8cf">$25.00 / hr</td><td style="padding:7px 10px;border:1px solid #c8d8cf">$30.00 / hr</td></tr>
-          <tr style="background:#f7fbf8"><td style="padding:7px 10px;border:1px solid #c8d8cf">CMA (Certified Medication Aide)</td><td style="padding:7px 10px;border:1px solid #c8d8cf">$25.00 / hr</td><td style="padding:7px 10px;border:1px solid #c8d8cf">$30.00 / hr</td></tr>
-          <tr><td style="padding:7px 10px;border:1px solid #c8d8cf">LPN (Licensed Practical Nurse)</td><td style="padding:7px 10px;border:1px solid #c8d8cf">$40.00 / hr</td><td style="padding:7px 10px;border:1px solid #c8d8cf">$50.00 / hr</td></tr>
-          <tr style="background:#f7fbf8"><td style="padding:7px 10px;border:1px solid #c8d8cf">RN (Registered Nurse)</td><td style="padding:7px 10px;border:1px solid #c8d8cf">$50.00 / hr</td><td style="padding:7px 10px;border:1px solid #c8d8cf">$60.00 / hr</td></tr>
+          ${rows}
         </tbody>
       </table>
       <h2>Travel Pay Policy</h2>
-      <p><strong>Travel pay applies to most facilities, but not all facilities.</strong> Travel pay is applicable when the drive time from the employee's home address to the assigned facility is one (1) hour or more. Facility eligibility for travel pay is determined by Progress Staffing Agency prior to each assignment.</p>
+      <p><strong>Travel pay applies to most facilities, but not all facilities.</strong> Travel pay is applicable when the drive time from the employee&rsquo;s home address to the assigned facility is one (1) hour or more. Facility eligibility for travel pay is determined by Progress Staffing Agency prior to each assignment.</p>
       <h2>General Terms</h2>
       <ul>
         <li>Overtime is paid at 1.5&times; the applicable hourly rate for all hours worked over 40 in a workweek as required by law.</li>
@@ -3488,8 +3499,8 @@ function renderSignedOnboardingFormHtml(formType, formRecord) {
         <li>Changes in role must be confirmed in writing by Progress Staffing Agency before taking effect.</li>
       </ul>
       <h2>Electronic Signature</h2>
-      <p>By signing electronically, I confirm that I have read this full Healthcare Compensation Agreement, understand my pay rates and the travel pay policy, and agree to the terms stated above.</p>
-    `
+      <p>By signing electronically, I confirm that I have read this full Healthcare Compensation Agreement, understand my pay rates and the travel pay policy, and agree to the terms stated above.</p>`;
+    })()
     : `
       <h2>Signed HIPAA Compliance Statement</h2>
       <p>
@@ -3589,7 +3600,7 @@ function serveSignedOnboardingForm(res, formType, formRecord, options = {}) {
     return res.status(404).json({ error: 'Signed form not found.' });
   }
 
-  const html = renderSignedOnboardingFormHtml(formType, formRecord);
+  const html = renderSignedOnboardingFormHtml(formType, formRecord, { employeePosition: options.employeePosition });
   const normalizedType = String(formType || '').trim().toLowerCase();
   const safeName = String((formRecord.legalName || 'employee')).trim().replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '') || 'employee';
   const fileNameMap = {
@@ -7400,7 +7411,10 @@ app.get('/api/portal/forms/:formType/:employeeId', authGuard(['admin', 'employee
   const download = String(req.query.download || '').trim().toLowerCase() === '1'
     || String(req.query.download || '').trim().toLowerCase() === 'true';
 
-  return serveSignedOnboardingForm(res, formType, formRecord, { download });
+  const empUser = db.prepare('SELECT id, email FROM users WHERE id = ? LIMIT 1').get(employeeId);
+  const employeePosition = empUser ? getEmployeePrimaryPosition(empUser.id, empUser.email) : '';
+
+  return serveSignedOnboardingForm(res, formType, formRecord, { download, employeePosition });
 });
 
 app.delete('/api/portal/employee/applications/:id', authGuard(['employee']), (req, res) => {

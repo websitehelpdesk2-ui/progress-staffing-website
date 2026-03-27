@@ -3471,25 +3471,30 @@ body.theme-dark a {
 /* Mobile responsiveness improvements                              */
 /* ═══════════════════════════════════════════════════════════════ */
 
-/* ── Nav: horizontal scroll on narrow screens ─────────────────── */
-/* Prevents the nav pill from wrapping onto a second line          */
+/* ── Nav: fit all links on one line on mobile ─────────────────── */
 @media (max-width: 640px) {
   .nav {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
+    width: 100%;
+    justify-content: space-between;
     flex-wrap: nowrap;
-    justify-content: flex-start;
-  }
-
-  .nav::-webkit-scrollbar {
-    display: none;
+    padding: 0.25rem 0.3rem;
+    gap: 0.15rem;
   }
 
   .nav a {
+    flex: 1 1 0;
+    text-align: center;
     white-space: nowrap;
-    padding: 0.5rem 0.85rem;
-    font-size: 0.88rem;
+    padding: 0.45rem 0.35rem;
+    font-size: 0.78rem;
+    letter-spacing: -0.01em;
+  }
+}
+
+@media (max-width: 400px) {
+  .nav a {
+    font-size: 0.72rem;
+    padding: 0.42rem 0.25rem;
   }
 }
 

@@ -1148,12 +1148,22 @@ async function apiFetch(url, options = {}) {
     ? url
     : `${API_BASE_URL}${url}`;
 
-  return fetch(resolvedUrl, {
+  const res = await fetch(resolvedUrl, {
     method: options.method || 'GET',
     headers,
     credentials: 'same-origin',
     body: options.body,
   });
+
+  if (res.status === 401 && !options._skipAuthRedirect) {
+    clearToken();
+    const loginPath = IS_FILE_PROTOCOL ? 'portal-login.html' : '/portal-login';
+    window.location.href = `${loginPath}?reason=session_expired`;
+    // Return a never-resolving promise so callers don't run their error path
+    return new Promise(() => {});
+  }
+
+  return res;
 }
 
 function routeForRole(role, portalScope = 'full') {
@@ -4341,7 +4351,7 @@ function bindPasswordVisibilityToggles() {
 
 async function loadCurrentUser() {
   try {
-    const res = await apiFetch('/api/auth/me');
+    const res = await apiFetch('/api/auth/me', { _skipAuthRedirect: true });
     if (!res.ok) return null;
     const payload = await res.json();
     portalSmtpConfigured = payload && payload.smtpConfigured !== false;
@@ -4385,6 +4395,7 @@ async function handlePortalLoginSubmit(event) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password, passcode: passcodeToSend }),
+    _skipAuthRedirect: true,
   });
 
   if (!res.ok) {
@@ -10544,6 +10555,7 @@ async function initPortalPage() {
 
     const applied = params.get('applied');
     const withdrawn = params.get('withdrawn');
+    const reason = params.get('reason');
     if (applied === '1') {
       const loginMsg = document.getElementById('portalLoginMessage');
       setMessage(loginMsg, 'Application received. Sign in to view it in your portal.', 'success');
@@ -10552,6 +10564,11 @@ async function initPortalPage() {
     if (withdrawn === '1') {
       const loginMsg = document.getElementById('portalLoginMessage');
       setMessage(loginMsg, 'Profile withdrawn successfully.', 'success');
+    }
+
+    if (reason === 'session_expired') {
+      const loginMsg = document.getElementById('portalLoginMessage');
+      setMessage(loginMsg, 'Your session has expired. Please sign in again.', 'error');
     }
 
     const user = await loadCurrentUser();

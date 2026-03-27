@@ -1904,6 +1904,120 @@ async function notifyAdminsAboutTimesheetApproved(payload) {
   ]);
 }
 
+async function notifyAdminsAboutFormSubmission(employeeUserId, employeeName, formType, formLabel) {
+  const admins = getActiveAdminUsersForScopes(['onboarding']);
+  if (!admins.length) return;
+  const title = 'Onboarding Form Signed';
+  const body = `${employeeName} signed the ${formLabel}.`;
+  await Promise.allSettled(admins.map((admin) => {
+    const url = buildPortalPath(getPortalPathForUser(admin), { task: 'employee-profile', employeeId: employeeUserId });
+    return Promise.resolve(createPortalNotification({
+      userId: admin.id,
+      actorUserId: employeeUserId,
+      category: 'document',
+      title,
+      body,
+      url,
+      metadata: { employeeId: employeeUserId, formType },
+      syncDomains: ['admin-dashboard'],
+    }));
+  }));
+}
+
+async function notifyEmployeeAboutBackgroundStatusChange(employeeUserId, statusValue) {
+  const employee = db.prepare('SELECT id, email, name FROM users WHERE id = ?').get(Number(employeeUserId));
+  if (!employee) return;
+  const friendlyStatus = statusValue === 'passed' ? 'Passed' : 'Requires Further Attention';
+  const title = 'Background Check Update';
+  const body = `Your background check status has been updated to: ${friendlyStatus}.`;
+  const url = '/portal-employee';
+  const absoluteUrl = absolutePortalUrl(url);
+  await Promise.allSettled([
+    Promise.resolve(createPortalNotification({
+      userId: Number(employeeUserId),
+      category: 'activity',
+      title,
+      body,
+      url,
+      metadata: { status: statusValue },
+      syncDomains: ['employee-dashboard'],
+    })),
+    sendEmailNotification(
+      employee.email,
+      title,
+      `${body}\n\nOpen your portal: ${absoluteUrl}`,
+      `<p>${escapeHtmlText(body)}</p><p><a href="${absoluteUrl}">Open Portal</a></p>`,
+      Number(employeeUserId)
+    ),
+  ]);
+}
+
+async function notifyAdminsAboutNewRegistration(userId, userName, userRole, companyName) {
+  const isJobsite = userRole === 'jobsite';
+  const admins = getActiveAdminUsersForScopes(isJobsite ? ['contracts'] : ['onboarding']);
+  if (!admins.length) return;
+  const displayName = isJobsite ? (companyName || userName) : userName;
+  const title = isJobsite ? 'New Client Registered' : 'New Employee Registered';
+  const body = `${displayName} registered as a new ${isJobsite ? 'client' : 'employee'}.`;
+  await Promise.allSettled(admins.map((admin) => {
+    const portalPath = getPortalPathForUser(admin);
+    const url = isJobsite ? portalPath : buildPortalPath(portalPath, { task: 'employee-profile', employeeId: userId });
+    return Promise.resolve(createPortalNotification({
+      userId: admin.id,
+      actorUserId: userId,
+      category: 'activity',
+      title,
+      body,
+      url,
+      metadata: { newUserId: userId, role: userRole },
+      syncDomains: ['admin-dashboard'],
+    }));
+  }));
+}
+
+async function notifyAdminsAboutSsnSubmission(employeeUserId, employeeName) {
+  const admins = getActiveAdminUsersForScopes(['onboarding']);
+  if (!admins.length) return;
+  const title = 'Employee SSN Submitted';
+  const body = `${employeeName} submitted their SSN.`;
+  await Promise.allSettled(admins.map((admin) => {
+    const url = buildPortalPath(getPortalPathForUser(admin), { task: 'employee-profile', employeeId: employeeUserId });
+    return Promise.resolve(createPortalNotification({
+      userId: admin.id,
+      actorUserId: employeeUserId,
+      category: 'activity',
+      title,
+      body,
+      url,
+      metadata: { employeeId: employeeUserId },
+      syncDomains: ['admin-dashboard'],
+    }));
+  }));
+}
+
+async function notifyAdminsAboutTimesheetSubmittedByEmployee(payload) {
+  const admins = getActiveAdminUsersForScopes(['scheduling']);
+  if (!admins.length) return;
+  const employeeName = String(payload.employeeName || 'An employee').trim();
+  const periodStart = String(payload.periodStart || '').trim();
+  const periodEnd = String(payload.periodEnd || '').trim();
+  const title = 'Timesheet Submitted';
+  const body = `${employeeName} submitted a timesheet (${periodStart} to ${periodEnd}).`;
+  await Promise.allSettled(admins.map((admin) => {
+    const url = buildPortalPath(getPortalPathForUser(admin), { task: 'timesheet-review', timesheetId: payload.timesheetId });
+    return Promise.resolve(createPortalNotification({
+      userId: admin.id,
+      actorUserId: payload.employeeUserId || null,
+      category: 'timesheet',
+      title,
+      body,
+      url,
+      metadata: { timesheetId: payload.timesheetId, employeeUserId: payload.employeeUserId },
+      syncDomains: ['admin-dashboard', 'timesheets'],
+    }));
+  }));
+}
+
 async function notifyJobsiteAboutTimesheetSubmitted(payload) {
   const jobsiteUserId = Number(payload.jobsiteUserId);
   const timesheetId = Number(payload.timesheetId);
@@ -4681,6 +4795,9 @@ app.patch('/api/portal/onboarding/employees/:employeeId/background-status', auth
   const newStatus = checkAndAutoActivateEmployee(employeeId, req.auth.id);
 
   emitDomainSyncToAdmins(['onboarding', 'full'], ['admin-dashboard', 'documents']);
+  runAsyncTask('notify_employee_bg_status', () =>
+    notifyEmployeeAboutBackgroundStatusChange(employeeId, status)
+  );
 
   return res.json({ employeeId, status, employeeOnboardingStatus: newStatus });
 });
@@ -5157,6 +5274,9 @@ app.post('/api/auth/register', async (req, res) => {
 
   try {
     const userId = tx();
+    runAsyncTask('notify_admins_new_registration', () =>
+      notifyAdminsAboutNewRegistration(userId, name, normalizedRole, companyName)
+    );
     return res.status(201).json({ id: userId, role: normalizedRole });
   } catch (error) {
     if (error && String(error.code || '').includes('SQLITE_CONSTRAINT')) {
@@ -6077,6 +6197,9 @@ app.post('/api/portal/employee/ssn', authGuard(['employee']), (req, res) => {
   }
   const encrypted = encryptSSN(formatted);
   db.prepare('UPDATE employee_profiles SET ssnEncrypted = ? WHERE userId = ?').run(encrypted, req.auth.id);
+  runAsyncTask('notify_admins_ssn_submitted', () =>
+    notifyAdminsAboutSsnSubmission(req.auth.id, req.auth.name)
+  );
   return res.json({ success: true, last4: formatted.slice(-4) });
 });
 
@@ -7018,6 +7141,9 @@ app.post('/api/portal/employee/background-consent', authGuard(['employee']), (re
 
   const onboardingStatus = syncEmployeeActivationState(req.auth.id);
   emitDomainSyncToAdmins(['onboarding', 'full'], ['admin-dashboard', 'documents']);
+  runAsyncTask('notify_admins_background_consent_signed', () =>
+    notifyAdminsAboutFormSubmission(req.auth.id, req.auth.name, 'background-consent', 'Background Consent form')
+  );
 
   return res.json({ updated: true, onboardingStatus });
 });
@@ -7077,6 +7203,9 @@ app.post('/api/portal/employee/hipaa-compliance', authGuard(['employee']), (req,
 
   const onboardingStatus = syncEmployeeActivationState(req.auth.id);
   emitDomainSyncToAdmins(['onboarding', 'full'], ['admin-dashboard', 'documents']);
+  runAsyncTask('notify_admins_hipaa_signed', () =>
+    notifyAdminsAboutFormSubmission(req.auth.id, req.auth.name, 'hipaa-compliance', 'HIPAA Compliance Agreement')
+  );
 
   return res.json({ updated: true, onboardingStatus });
 });
@@ -7136,6 +7265,9 @@ app.post('/api/portal/employee/employee-handbook', authGuard(['employee']), (req
 
   const onboardingStatus = syncEmployeeActivationState(req.auth.id);
   emitDomainSyncToAdmins(['onboarding', 'full'], ['admin-dashboard', 'documents']);
+  runAsyncTask('notify_admins_handbook_signed', () =>
+    notifyAdminsAboutFormSubmission(req.auth.id, req.auth.name, 'employee-handbook', 'Employee Handbook')
+  );
 
   return res.json({ updated: true, onboardingStatus });
 });
@@ -7195,6 +7327,9 @@ app.post('/api/portal/employee/compensation-agreement', authGuard(['employee']),
 
   const onboardingStatus = syncEmployeeActivationState(req.auth.id);
   emitDomainSyncToAdmins(['onboarding', 'full'], ['admin-dashboard', 'documents']);
+  runAsyncTask('notify_admins_comp_agreement_signed', () =>
+    notifyAdminsAboutFormSubmission(req.auth.id, req.auth.name, 'compensation-agreement', 'Employee Compensation Agreement')
+  );
 
   return res.json({ updated: true, onboardingStatus });
 });
@@ -9508,6 +9643,9 @@ app.patch('/api/admin/employees/:employeeId/background-status', authGuard(['admi
   );
 
   const newStatus = checkAndAutoActivateEmployee(employeeId, req.auth.id);
+  runAsyncTask('notify_employee_bg_status_admin', () =>
+    notifyEmployeeAboutBackgroundStatusChange(employeeId, status)
+  );
   return res.json({ employeeId, status, employeeOnboardingStatus: newStatus });
 });
 
@@ -11170,6 +11308,16 @@ app.post('/api/portal/employee/timesheets/submit', authGuard(['employee']), (req
       actorUserId: req.auth.id,
       timesheetId,
       source: 'clock',
+      periodStart,
+      periodEnd,
+    })
+  );
+
+  runAsyncTask('notify_admins_timesheet_submitted_clock', () =>
+    notifyAdminsAboutTimesheetSubmittedByEmployee({
+      timesheetId,
+      employeeUserId: req.auth.id,
+      employeeName: req.auth.name,
       periodStart,
       periodEnd,
     })

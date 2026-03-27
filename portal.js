@@ -2575,6 +2575,17 @@ async function handlePortalNotificationAction(item) {
     return;
   }
 
+  if (pageType === 'admin' && metadata.employeeId) {
+    await loadAdminEmployeeDetail(asInt(metadata.employeeId));
+    return;
+  }
+
+  if (pageType === 'admin' && metadata.timesheetId) {
+    const timesheetSection = document.getElementById('adminTimesheetsSection');
+    if (timesheetSection) timesheetSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return;
+  }
+
   if (item.url) {
     window.location.href = item.url;
   }
@@ -2798,6 +2809,13 @@ async function handlePortalNotificationIntent(currentUser) {
   if (task === 'timesheet-review' && String(document.body?.dataset?.portalPage || '').toLowerCase() === 'admin') {
     const timesheetSection = document.getElementById('adminTimesheetsSection');
     if (timesheetSection) timesheetSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  if (task === 'employee-profile' && String(document.body?.dataset?.portalPage || '').toLowerCase() === 'admin') {
+    const employeeId = asInt(params.get('employeeId'));
+    if (Number.isInteger(employeeId) && employeeId > 0) {
+      await loadAdminEmployeeDetail(employeeId);
+    }
   }
 
   clearUrlParams(['task', 'employeeId', 'docId', 'contractId', 'track', 'timesheetId']);

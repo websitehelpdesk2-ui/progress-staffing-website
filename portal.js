@@ -339,6 +339,23 @@ const EMPLOYEE_WEB_FORM_CONFIGS = {
     successMessage: 'Employee Handbook acknowledgment saved successfully.',
     errorMessage: 'Failed to save the Employee Handbook acknowledgment.',
   },
+  'compensation-agreement': {
+    key: 'compensation-agreement',
+    dataKey: 'compensationAgreementForm',
+    documentType: 'employee_compensation_agreement',
+    title: 'Healthcare Compensation Agreement',
+    templateId: 'employeeCompensationAgreementTemplate',
+    endpoint: '/api/portal/employee/compensation-agreement',
+    badgeId: 'employeeTodoCompBadge',
+    summaryId: 'employeeTodoCompSummary',
+    pendingSummary: 'Open the Healthcare Compensation Agreement, review your pay rates and travel pay policy, and sign to complete this onboarding item.',
+    unlockMessage: 'You reached the bottom. Acknowledge the compensation agreement and sign to save it to your profile.',
+    lockedMessage: 'Scroll to the bottom of the form to unlock the acknowledgment and electronic signature fields.',
+    acknowledgmentText: 'I have read the full Healthcare Compensation Agreement, understand my pay rates and travel pay policy, and agree to sign electronically.',
+    successMessage: 'Healthcare Compensation Agreement saved successfully.',
+    errorMessage: 'Failed to save the Healthcare Compensation Agreement.',
+    healthcareOnly: true,
+  },
 };
 
 let EXPIRATION_REQUIRED_TYPES = new Set([
@@ -450,8 +467,16 @@ function renderEmployeeTodoForms(data) {
   const todoSection = document.getElementById('employeeTodosSection');
   if (!todoSection) return;
 
+  const industry = inferPrimaryIndustry(data.applications || []);
+  const isHealthcare = HEALTHCARE_INDUSTRIES.has(String(industry).toLowerCase());
+
+  // Show/hide the healthcare-only compensation agreement card
+  const compCard = document.querySelector('[data-employee-form-card="compensation-agreement"]');
+  if (compCard) compCard.hidden = !isHealthcare;
+
   let pendingCount = 0;
   Object.values(EMPLOYEE_WEB_FORM_CONFIGS).forEach((config) => {
+    if (config.healthcareOnly && !isHealthcare) return;
     const record = data && data[config.dataKey] ? data[config.dataKey] : null;
     applyEmployeeWebFormCardState(config, record);
     if (!(record && record.acknowledged)) pendingCount += 1;
@@ -5292,6 +5317,10 @@ function renderAdminEmployeeDetail(data) {
     const handbookNoticeUrl = getSignedOnboardingFormUrl('employee-handbook', employee.id);
     onboardingFormRows.push(`<tr><td>Employee Handbook</td><td>${escapeHtml(data.handbookForm.legalName || 'N/A')}</td><td>${escapeHtml(data.handbookForm.signatureName || 'N/A')}</td><td>${escapeHtml(data.handbookForm.signedDate ? formatDateOnly(data.handbookForm.signedDate) : 'N/A')}</td><td>${escapeHtml(data.handbookForm.updatedAt ? formatDateOnly(data.handbookForm.updatedAt) : 'N/A')}</td><td><button class="button button--ghost button--sm" type="button" data-onboarding-form-details="employee-handbook">View Details</button> <a class="link" href="${escapeHtml(handbookNoticeUrl)}" target="_blank" rel="noopener">View Notice</a></td></tr>`);
   }
+  if (data.compensationAgreementForm) {
+    const compNoticeUrl = getSignedOnboardingFormUrl('compensation-agreement', employee.id);
+    onboardingFormRows.push(`<tr><td>Healthcare Compensation Agreement</td><td>${escapeHtml(data.compensationAgreementForm.legalName || 'N/A')}</td><td>${escapeHtml(data.compensationAgreementForm.signatureName || 'N/A')}</td><td>${escapeHtml(data.compensationAgreementForm.signedDate ? formatDateOnly(data.compensationAgreementForm.signedDate) : 'N/A')}</td><td>${escapeHtml(data.compensationAgreementForm.updatedAt ? formatDateOnly(data.compensationAgreementForm.updatedAt) : 'N/A')}</td><td><button class="button button--ghost button--sm" type="button" data-onboarding-form-details="compensation-agreement">View Details</button> <a class="link" href="${escapeHtml(compNoticeUrl)}" target="_blank" rel="noopener">View Notice</a></td></tr>`);
+  }
   setTableRows('adminEmployeeOnboardingForms', onboardingFormRows, 6, 'No onboarding forms submitted yet.');
 
   const onboardingDetailPanel = document.getElementById('adminOnboardingFormDetailPanel');
@@ -8888,6 +8917,28 @@ function bindAdminForms(currentUser) {
             <div class="profile-info__item"><span class="profile-info__label">Signature</span><span>${escapeHtml(form.signatureName || 'N/A')}</span></div>
             <div class="profile-info__item"><span class="profile-info__label">Signed Date</span><span>${escapeHtml(form.signedDate ? formatDateOnly(form.signedDate) : 'N/A')}</span></div>
             <div class="profile-info__item"><span class="profile-info__label">Last Updated</span><span>${escapeHtml(form.updatedAt ? formatDateTime(form.updatedAt) : 'N/A')}</span></div>
+            <div class="profile-info__item"><span class="profile-info__label">Handbook Version</span><span>${escapeHtml(form.handbookVersion || 'v1')}</span></div>
+            <div class="profile-info__item"><span class="profile-info__label">IP Address</span><span>${escapeHtml(form.ipAddress || 'Not stored')}</span></div>
+            <div class="profile-info__item"><span class="profile-info__label">User Agent</span><span>${escapeHtml(form.userAgent || 'Not stored')}</span></div>
+            <div class="profile-info__item"><span class="profile-info__label">Completed Copy</span><span><a class="link" href="${escapeHtml(noticeUrl)}" target="_blank" rel="noopener">Open signed form</a></span></div>
+          `;
+          setMessage(detailMsg, 'Signed Employee Handbook record loaded.', 'success');
+        } else if (formType === 'compensation-agreement' && adminState.selectedEmployeeDetail && adminState.selectedEmployeeDetail.compensationAgreementForm) {
+          const form = adminState.selectedEmployeeDetail.compensationAgreementForm;
+          const noticeUrl = getSignedOnboardingFormUrl('compensation-agreement', adminState.selectedEmployeeDetail.employee && adminState.selectedEmployeeDetail.employee.id);
+          body.innerHTML = `
+            <div class="profile-info__item"><span class="profile-info__label">Form</span><span>Healthcare Compensation Agreement</span></div>
+            <div class="profile-info__item"><span class="profile-info__label">Legal Name</span><span>${escapeHtml(form.legalName || 'N/A')}</span></div>
+            <div class="profile-info__item"><span class="profile-info__label">Signature</span><span>${escapeHtml(form.signatureName || 'N/A')}</span></div>
+            <div class="profile-info__item"><span class="profile-info__label">Signed Date</span><span>${escapeHtml(form.signedDate ? formatDateOnly(form.signedDate) : 'N/A')}</span></div>
+            <div class="profile-info__item"><span class="profile-info__label">Last Updated</span><span>${escapeHtml(form.updatedAt ? formatDateTime(form.updatedAt) : 'N/A')}</span></div>
+            <div class="profile-info__item"><span class="profile-info__label">Agreement Version</span><span>${escapeHtml(form.agreementVersion || 'v1')}</span></div>
+            <div class="profile-info__item"><span class="profile-info__label">IP Address</span><span>${escapeHtml(form.ipAddress || 'Not stored')}</span></div>
+            <div class="profile-info__item"><span class="profile-info__label">User Agent</span><span>${escapeHtml(form.userAgent || 'Not stored')}</span></div>
+            <div class="profile-info__item"><span class="profile-info__label">Completed Copy</span><span><a class="link" href="${escapeHtml(noticeUrl)}" target="_blank" rel="noopener">Open signed form</a></span></div>
+          `;
+          setMessage(detailMsg, 'Signed Healthcare Compensation Agreement record loaded.', 'success');
+        } else {
             <div class="profile-info__item"><span class="profile-info__label">Handbook Version</span><span>${escapeHtml(form.handbookVersion || 'v1')}</span></div>
             <div class="profile-info__item"><span class="profile-info__label">IP Address</span><span>${escapeHtml(form.ipAddress || 'Not stored')}</span></div>
             <div class="profile-info__item"><span class="profile-info__label">User Agent</span><span>${escapeHtml(form.userAgent || 'Not stored')}</span></div>

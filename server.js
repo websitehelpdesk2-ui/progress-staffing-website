@@ -581,6 +581,21 @@ function initDatabase() {
       FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS employee_compensation_agreement_forms (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      userId INTEGER NOT NULL UNIQUE,
+      acknowledged INTEGER NOT NULL DEFAULT 0,
+      legalName TEXT NOT NULL,
+      signatureName TEXT NOT NULL,
+      signedDate TEXT NOT NULL,
+      agreementVersion TEXT NOT NULL DEFAULT 'v1',
+      ipAddress TEXT,
+      userAgent TEXT,
+      createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+    );
+
     CREATE TABLE IF NOT EXISTS shift_declines (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       jobId INTEGER NOT NULL,
@@ -3171,6 +3186,23 @@ function getEmployeeHandbookForm(userId, options = {}) {
   ).get(normalizedUserId) || null;
 }
 
+function getEmployeeCompensationAgreementForm(userId, options = {}) {
+  const normalizedUserId = Number(userId);
+  if (!Number.isInteger(normalizedUserId) || normalizedUserId < 1) return null;
+
+  const includeMeta = Boolean(options.includeMeta);
+  const columns = includeMeta
+    ? `id, userId, acknowledged, legalName, signatureName, signedDate, agreementVersion, ipAddress, userAgent, createdAt, updatedAt`
+    : `id, userId, acknowledged, legalName, signatureName, signedDate, agreementVersion, createdAt, updatedAt`;
+
+  return db.prepare(
+    `SELECT ${columns}
+     FROM employee_compensation_agreement_forms
+     WHERE userId = ?
+     LIMIT 1`
+  ).get(normalizedUserId) || null;
+}
+
 function getSignedOnboardingFormRecord(formType, userId, options = {}) {
   const normalizedType = String(formType || '').trim().toLowerCase();
   if (normalizedType === 'background-consent') {
@@ -3181,6 +3213,9 @@ function getSignedOnboardingFormRecord(formType, userId, options = {}) {
   }
   if (normalizedType === 'employee-handbook') {
     return getEmployeeHandbookForm(userId, options);
+  }
+  if (normalizedType === 'compensation-agreement') {
+    return getEmployeeCompensationAgreementForm(userId, options);
   }
   return null;
 }
@@ -3217,17 +3252,23 @@ function renderSignedOnboardingFormHtml(formType, formRecord) {
     ? escapeHtmlDocument(formRecord?.consentVersion || 'v1')
     : normalizedType === 'employee-handbook'
       ? escapeHtmlDocument(formRecord?.handbookVersion || 'v1')
-      : escapeHtmlDocument(formRecord?.policyVersion || 'v1');
+      : normalizedType === 'compensation-agreement'
+        ? escapeHtmlDocument(formRecord?.agreementVersion || 'v1')
+        : escapeHtmlDocument(formRecord?.policyVersion || 'v1');
   const title = normalizedType === 'background-consent'
     ? 'Background Acknowledgment & Consent Record'
     : normalizedType === 'employee-handbook'
       ? 'Employee Handbook Acknowledgment Record'
-      : 'HIPAA Compliance & Confidentiality Record';
+      : normalizedType === 'compensation-agreement'
+        ? 'Healthcare Compensation Agreement Record'
+        : 'HIPAA Compliance & Confidentiality Record';
   const subtitle = normalizedType === 'background-consent'
     ? 'Signed employee background authorization copy'
     : normalizedType === 'employee-handbook'
       ? 'Signed employee handbook acknowledgment copy'
-      : 'Signed employee confidentiality acknowledgment copy';
+      : normalizedType === 'compensation-agreement'
+        ? 'Signed healthcare employee compensation agreement copy'
+        : 'Signed employee confidentiality acknowledgment copy';
   const statementHtml = normalizedType === 'background-consent'
     ? `
       <h2>Signed Authorization</h2>
@@ -3303,6 +3344,31 @@ function renderSignedOnboardingFormHtml(formType, formRecord) {
 
       <h2>Electronic Signature</h2>
       <p>By signing electronically, I confirm that I have read this Employee Handbook in full, understand the policies and expectations described, and agree to follow them on every assignment.</p>
+    `
+    : normalizedType === 'compensation-agreement'
+    ? `
+      <h2>Pay Rate Schedule</h2>
+      <p>I acknowledge and agree to the following hourly pay rates applicable to my licensed role:</p>
+      <table style="width:100%;border-collapse:collapse;font-size:15px;margin-bottom:1rem">
+        <thead><tr style="background:#e4f1ea"><th style="text-align:left;padding:8px 10px;border:1px solid #c8d8cf">Role</th><th style="text-align:left;padding:8px 10px;border:1px solid #c8d8cf">Local Pay Rate</th><th style="text-align:left;padding:8px 10px;border:1px solid #c8d8cf">Travel Pay Rate</th></tr></thead>
+        <tbody>
+          <tr><td style="padding:7px 10px;border:1px solid #c8d8cf">CNA (Certified Nursing Assistant)</td><td style="padding:7px 10px;border:1px solid #c8d8cf">$25.00 / hr</td><td style="padding:7px 10px;border:1px solid #c8d8cf">$30.00 / hr</td></tr>
+          <tr style="background:#f7fbf8"><td style="padding:7px 10px;border:1px solid #c8d8cf">CMA (Certified Medication Aide)</td><td style="padding:7px 10px;border:1px solid #c8d8cf">$25.00 / hr</td><td style="padding:7px 10px;border:1px solid #c8d8cf">$30.00 / hr</td></tr>
+          <tr><td style="padding:7px 10px;border:1px solid #c8d8cf">LPN (Licensed Practical Nurse)</td><td style="padding:7px 10px;border:1px solid #c8d8cf">$40.00 / hr</td><td style="padding:7px 10px;border:1px solid #c8d8cf">$50.00 / hr</td></tr>
+          <tr style="background:#f7fbf8"><td style="padding:7px 10px;border:1px solid #c8d8cf">RN (Registered Nurse)</td><td style="padding:7px 10px;border:1px solid #c8d8cf">$50.00 / hr</td><td style="padding:7px 10px;border:1px solid #c8d8cf">$60.00 / hr</td></tr>
+        </tbody>
+      </table>
+      <h2>Travel Pay Policy</h2>
+      <p><strong>Travel pay applies to most facilities, but not all facilities.</strong> Travel pay is applicable when the drive time from the employee's home address to the assigned facility is one (1) hour or more. Facility eligibility for travel pay is determined by Progress Staffing Agency prior to each assignment.</p>
+      <h2>General Terms</h2>
+      <ul>
+        <li>Overtime is paid at 1.5&times; the applicable hourly rate for all hours worked over 40 in a workweek as required by law.</li>
+        <li>Pay rates are subject to periodic review and may be updated with written notice.</li>
+        <li>This agreement does not guarantee any specific number of hours, shifts, or assignments.</li>
+        <li>Changes in role must be confirmed in writing by Progress Staffing Agency before taking effect.</li>
+      </ul>
+      <h2>Electronic Signature</h2>
+      <p>By signing electronically, I confirm that I have read this full Healthcare Compensation Agreement, understand my pay rates and the travel pay policy, and agree to the terms stated above.</p>
     `
     : `
       <h2>Signed HIPAA Compliance Statement</h2>
@@ -3409,6 +3475,7 @@ function serveSignedOnboardingForm(res, formType, formRecord, options = {}) {
   const fileNameMap = {
     'background-consent': `${safeName}-background-consent.html`,
     'employee-handbook': `${safeName}-employee-handbook.html`,
+    'compensation-agreement': `${safeName}-compensation-agreement.html`,
   };
   const fileName = fileNameMap[normalizedType] || `${safeName}-hipaa-compliance.html`;
 
@@ -3442,6 +3509,10 @@ function evaluateEmployeeDocumentCompliance(industry, documents = [], options = 
   const handbookComplete = Boolean(options.handbookComplete);
   const handbookSignedDate = options.handbookSignedDate || null;
   const handbookUpdatedAt = options.handbookUpdatedAt || null;
+  const compensationAgreementComplete = Boolean(options.compensationAgreementComplete);
+  const compensationAgreementSignedDate = options.compensationAgreementSignedDate || null;
+  const compensationAgreementUpdatedAt = options.compensationAgreementUpdatedAt || null;
+  const isHealthcareIndustry = HEALTHCARE_INDUSTRIES.has(String(industry || '').toLowerCase());
 
   documents.forEach((doc) => {
     const type = String(doc.documentType || '').toLowerCase();
@@ -3531,6 +3602,23 @@ function evaluateEmployeeDocumentCompliance(industry, documents = [], options = 
     updatedAt: handbookUpdatedAt,
   });
 
+  if (isHealthcareIndustry) {
+    items.push({
+      documentType: 'employee_compensation_agreement',
+      kind: 'form',
+      required: true,
+      requiresExpiration: false,
+      uploadedCount: compensationAgreementComplete ? 1 : 0,
+      approvedCount: compensationAgreementComplete ? 1 : 0,
+      missingRequired: !compensationAgreementComplete,
+      missingExpiration: false,
+      pendingApproval: false,
+      complete: compensationAgreementComplete,
+      signedDate: compensationAgreementSignedDate,
+      updatedAt: compensationAgreementUpdatedAt,
+    });
+  }
+
   const missingRequired = items.filter((item) => item.missingRequired).map((item) => item.documentType);
   const missingExpiration = items.filter((item) => item.missingExpiration).map((item) => item.documentType);
 
@@ -3559,6 +3647,9 @@ function evaluateEmployeeCompliance(userId, industry, documents = []) {
   const backgroundConsentForm = getEmployeeBackgroundConsentForm(userId);
   const hipaaComplianceForm = getEmployeeHipaaComplianceForm(userId);
   const handbookForm = getEmployeeHandbookForm(userId);
+  const compensationAgreementForm = HEALTHCARE_INDUSTRIES.has(String(industry || '').toLowerCase())
+    ? getEmployeeCompensationAgreementForm(userId)
+    : null;
   const compliance = evaluateEmployeeDocumentCompliance(industry, documents, {
     backgroundConsentComplete: Boolean(backgroundConsentForm && backgroundConsentForm.acknowledged),
     backgroundConsentSignedDate: backgroundConsentForm ? backgroundConsentForm.signedDate : null,
@@ -3569,8 +3660,11 @@ function evaluateEmployeeCompliance(userId, industry, documents = []) {
     handbookComplete: Boolean(handbookForm && handbookForm.acknowledged),
     handbookSignedDate: handbookForm ? handbookForm.signedDate : null,
     handbookUpdatedAt: handbookForm ? handbookForm.updatedAt : null,
+    compensationAgreementComplete: Boolean(compensationAgreementForm && compensationAgreementForm.acknowledged),
+    compensationAgreementSignedDate: compensationAgreementForm ? compensationAgreementForm.signedDate : null,
+    compensationAgreementUpdatedAt: compensationAgreementForm ? compensationAgreementForm.updatedAt : null,
   });
-  return { compliance, backgroundConsentForm, hipaaComplianceForm, handbookForm };
+  return { compliance, backgroundConsentForm, hipaaComplianceForm, handbookForm, compensationAgreementForm };
 }
 
 function computeEmployeeOnboardingStatus(isActive, compliance, backgroundStatus) {
@@ -5817,7 +5911,7 @@ app.get('/api/portal/employee/dashboard', authGuard(['employee']), (req, res) =>
     }));
 
   const industry = inferIndustryFromApplications(applications);
-  const { compliance, backgroundConsentForm, hipaaComplianceForm, handbookForm } = evaluateEmployeeCompliance(req.auth.id, industry, documents);
+  const { compliance, backgroundConsentForm, hipaaComplianceForm, handbookForm, compensationAgreementForm } = evaluateEmployeeCompliance(req.auth.id, industry, documents);
   const onboardingStatus = computeEmployeeOnboardingStatus(req.auth.isActive, compliance, profile.backgroundStatus);
 
   const w4Form =
@@ -5897,6 +5991,7 @@ app.get('/api/portal/employee/dashboard', authGuard(['employee']), (req, res) =>
     backgroundConsentForm,
     hipaaComplianceForm,
     handbookForm,
+    compensationAgreementForm,
     currentAssignments,
     pastAssignments,
     assignments,
@@ -7042,11 +7137,70 @@ app.post('/api/portal/employee/employee-handbook', authGuard(['employee']), (req
   return res.json({ updated: true, onboardingStatus });
 });
 
+app.post('/api/portal/employee/compensation-agreement', authGuard(['employee']), (req, res) => {
+  const {
+    acknowledged,
+    legalName,
+    signatureName,
+    signedDate,
+  } = req.body || {};
+
+  if (!isTruthy(acknowledged)) {
+    return res.status(400).json({ error: 'You must acknowledge the Healthcare Compensation Agreement before signing.' });
+  }
+
+  if (!legalName || !signatureName || !signedDate) {
+    return res.status(400).json({ error: 'legalName, signatureName, and signedDate are required.' });
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(signedDate))) {
+    return res.status(400).json({ error: 'signedDate must be in YYYY-MM-DD format.' });
+  }
+
+  const upsert = db.prepare(
+    `INSERT INTO employee_compensation_agreement_forms (
+        userId,
+        acknowledged,
+        legalName,
+        signatureName,
+        signedDate,
+        agreementVersion,
+        ipAddress,
+        userAgent,
+        updatedAt
+      )
+      VALUES (?, 1, ?, ?, ?, 'v1', ?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(userId) DO UPDATE SET
+        acknowledged = 1,
+        legalName = excluded.legalName,
+        signatureName = excluded.signatureName,
+        signedDate = excluded.signedDate,
+        agreementVersion = excluded.agreementVersion,
+        ipAddress = excluded.ipAddress,
+        userAgent = excluded.userAgent,
+        updatedAt = CURRENT_TIMESTAMP`
+  );
+
+  upsert.run(
+    req.auth.id,
+    String(legalName).trim(),
+    String(signatureName).trim(),
+    String(signedDate).trim(),
+    String(req.ip || '').trim().slice(0, 255) || null,
+    String(req.get('user-agent') || '').trim().slice(0, 500) || null,
+  );
+
+  const onboardingStatus = syncEmployeeActivationState(req.auth.id);
+  emitDomainSyncToAdmins(['onboarding', 'full'], ['admin-dashboard', 'documents']);
+
+  return res.json({ updated: true, onboardingStatus });
+});
+
 app.get('/api/portal/forms/:formType/:employeeId', authGuard(['admin', 'employee', 'jobsite', 'onboarding']), (req, res) => {
   const formType = String(req.params.formType || '').trim().toLowerCase();
   const employeeId = Number(req.params.employeeId);
 
-  if (!['background-consent', 'hipaa-compliance', 'employee-handbook'].includes(formType)) {
+  if (!['background-consent', 'hipaa-compliance', 'employee-handbook', 'compensation-agreement'].includes(formType)) {
     return res.status(400).json({ error: 'Invalid form type.' });
   }
 

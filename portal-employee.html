@@ -779,6 +779,21 @@
               <button id="employeeHandbookViewBtn" class="button button--ghost button--sm" type="button" data-employee-form-view="employee-handbook" hidden>View Signed Copy</button>
             </div>
           </article>
+
+          <article class="portal-todo-card" data-employee-form-card="compensation-agreement" hidden>
+            <div class="portal-todo-card__top">
+              <div>
+                <p class="portal-todo-card__eyebrow">Required Form &mdash; Healthcare</p>
+                <h3 class="portal-todo-card__title">Healthcare Compensation Agreement</h3>
+              </div>
+              <span id="employeeTodoCompBadge" class="badge badge--yellow">Pending</span>
+            </div>
+            <p id="employeeTodoCompSummary" class="portal-todo-card__summary">Open the Healthcare Compensation Agreement, review your pay rates and travel pay policy, and sign to complete this onboarding item.</p>
+            <div class="form-actions portal-form-actions-row portal-form-actions-mt">
+              <button class="button" type="button" data-employee-form-open="compensation-agreement">Open Form</button>
+              <button id="employeeCompAgreementViewBtn" class="button button--ghost button--sm" type="button" data-employee-form-view="compensation-agreement" hidden>View Signed Copy</button>
+            </div>
+          </article>
         </div>
       </div>
 
@@ -902,6 +917,36 @@
           <p>When an assignment ends, contact Progress Staffing Agency promptly to discuss availability for new assignments. Return all client property, badges, keys, equipment, and uniforms before or on the last day of assignment. Failure to return client property may result in deductions as permitted by law and may affect future assignment eligibility.</p>
           <h4>Electronic Signature</h4>
           <p>By checking the acknowledgment box and typing your legal name below, you confirm that you have read this entire Employee Handbook, understand the policies and expectations, and agree to follow them on every assignment.</p>
+        </div>
+      </template>
+
+      <template id="employeeCompensationAgreementTemplate">
+        <div class="portal-webform-copy">
+          <p>This Healthcare Compensation Agreement outlines your hourly pay rates as a healthcare employee placed by Progress Staffing Agency. Please read this agreement carefully and in full before signing.</p>
+          <h4>Pay Rate Schedule</h4>
+          <p>Your hourly compensation is based on your licensed role and whether the assignment is local or travel:</p>
+          <table class="portal-table" style="min-width:0;margin-bottom:0.85rem">
+            <thead>
+              <tr><th>Role</th><th>Local Pay Rate</th><th>Travel Pay Rate</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>CNA &mdash; Certified Nursing Assistant</td><td>$25.00 / hr</td><td>$30.00 / hr</td></tr>
+              <tr><td>CMA &mdash; Certified Medication Aide</td><td>$25.00 / hr</td><td>$30.00 / hr</td></tr>
+              <tr><td>LPN &mdash; Licensed Practical Nurse</td><td>$40.00 / hr</td><td>$50.00 / hr</td></tr>
+              <tr><td>RN &mdash; Registered Nurse</td><td>$50.00 / hr</td><td>$60.00 / hr</td></tr>
+            </tbody>
+          </table>
+          <h4>Travel Pay Policy</h4>
+          <p><strong>Travel pay applies to most facilities, but not all facilities.</strong> Travel pay is applicable when the drive time from your home address to the assigned facility is one (1) hour or more. Whether travel pay applies to a specific facility is determined by Progress Staffing Agency and you will be notified prior to your assignment.</p>
+          <h4>General Terms</h4>
+          <ul>
+            <li>Overtime is paid at 1.5&times; your applicable hourly rate for all hours worked over 40 in a workweek, as required by law.</li>
+            <li>Pay rates are subject to periodic review and may be updated with written notice.</li>
+            <li>This agreement does not guarantee any specific number of hours, shifts, or assignments.</li>
+            <li>Any change in role classification must be confirmed in writing by Progress Staffing Agency before taking effect.</li>
+          </ul>
+          <h4>Electronic Signature</h4>
+          <p>By checking the acknowledgment box and typing your legal name below, you confirm that you have read this full Healthcare Compensation Agreement, understand your pay rates and the travel pay policy, and agree to the terms stated above.</p>
         </div>
       </template>
 

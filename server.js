@@ -3260,14 +3260,14 @@ function renderSignedOnboardingFormHtml(formType, formRecord) {
     : normalizedType === 'employee-handbook'
       ? 'Employee Handbook Acknowledgment Record'
       : normalizedType === 'compensation-agreement'
-        ? 'Healthcare Compensation Agreement Record'
+        ? 'Employee Compensation Agreement Record'
         : 'HIPAA Compliance & Confidentiality Record';
   const subtitle = normalizedType === 'background-consent'
     ? 'Signed employee background authorization copy'
     : normalizedType === 'employee-handbook'
       ? 'Signed employee handbook acknowledgment copy'
       : normalizedType === 'compensation-agreement'
-        ? 'Signed healthcare employee compensation agreement copy'
+        ? 'Signed employee compensation agreement copy'
         : 'Signed employee confidentiality acknowledgment copy';
   const statementHtml = normalizedType === 'background-consent'
     ? `

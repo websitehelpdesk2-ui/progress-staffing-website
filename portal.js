@@ -343,17 +343,17 @@ const EMPLOYEE_WEB_FORM_CONFIGS = {
     key: 'compensation-agreement',
     dataKey: 'compensationAgreementForm',
     documentType: 'employee_compensation_agreement',
-    title: 'Healthcare Compensation Agreement',
+    title: 'Employee Compensation Agreement',
     templateId: 'employeeCompensationAgreementTemplate',
     endpoint: '/api/portal/employee/compensation-agreement',
     badgeId: 'employeeTodoCompBadge',
     summaryId: 'employeeTodoCompSummary',
-    pendingSummary: 'Open the Healthcare Compensation Agreement, review your pay rates and travel pay policy, and sign to complete this onboarding item.',
+    pendingSummary: 'Open the Employee Compensation Agreement, review your pay rate and travel pay policy, and sign to complete this onboarding item.',
     unlockMessage: 'You reached the bottom. Acknowledge the compensation agreement and sign to save it to your profile.',
     lockedMessage: 'Scroll to the bottom of the form to unlock the acknowledgment and electronic signature fields.',
-    acknowledgmentText: 'I have read the full Healthcare Compensation Agreement, understand my pay rates and travel pay policy, and agree to sign electronically.',
-    successMessage: 'Healthcare Compensation Agreement saved successfully.',
-    errorMessage: 'Failed to save the Healthcare Compensation Agreement.',
+    acknowledgmentText: 'I have read the full Employee Compensation Agreement, understand my pay rate and travel pay policy, and agree to sign electronically.',
+    successMessage: 'Employee Compensation Agreement saved successfully.',
+    errorMessage: 'Failed to save the Employee Compensation Agreement.',
     healthcareOnly: true,
   },
 };
@@ -4614,7 +4614,7 @@ function renderEmployeeDashboard(data) {
   
   const industry = document.getElementById('portalIndustry');
   if (industry) {
-    const industryTrack = String(data.industry || data.profile?.industryTrack || '—').trim();
+    const industryTrack = inferPrimaryIndustry(data.applications || []) || String(data.profile?.industryTrack || '').trim();
     industry.textContent = formatIndustryDisplay(industryTrack);
   }
 
@@ -6119,6 +6119,26 @@ function bindEmployeeForms(currentUser) {
       if (textSpan) textSpan.textContent = config.acknowledgmentText;
     }
     if (webFormModalContent) webFormModalContent.innerHTML = template.innerHTML;
+
+    // For the compensation agreement, replace the pay rate table with only the employee's role
+    if (config.key === 'compensation-agreement' && webFormModalContent && employeeDashboardPayload) {
+      const empIndustry = inferPrimaryIndustry(employeeDashboardPayload.applications || []);
+      const rateMap = {
+        cna: { role: 'CNA \u2014 Certified Nursing Assistant', local: '$25.00\u00a0/\u00a0hr', travel: '$30.00\u00a0/\u00a0hr' },
+        cma: { role: 'CMA \u2014 Certified Medication Aide',  local: '$25.00\u00a0/\u00a0hr', travel: '$30.00\u00a0/\u00a0hr' },
+        lpn: { role: 'LPN \u2014 Licensed Practical Nurse',  local: '$40.00\u00a0/\u00a0hr', travel: '$50.00\u00a0/\u00a0hr' },
+        lvn: { role: 'LVN \u2014 Licensed Vocational Nurse', local: '$40.00\u00a0/\u00a0hr', travel: '$50.00\u00a0/\u00a0hr' },
+        rn:  { role: 'RN \u2014 Registered Nurse',           local: '$50.00\u00a0/\u00a0hr', travel: '$60.00\u00a0/\u00a0hr' },
+      };
+      const rate = rateMap[empIndustry];
+      if (rate) {
+        const tbody = webFormModalContent.querySelector('.portal-table tbody');
+        if (tbody) {
+          tbody.innerHTML = `<tr><td>${rate.role}</td><td>${rate.local}</td><td>${rate.travel}</td></tr>`;
+        }
+      }
+    }
+
     if (webFormLegalName) webFormLegalName.value = (formRecord && formRecord.legalName) || String(portalCurrentUser?.name || '').trim();
     if (webFormSignatureName) webFormSignatureName.value = (formRecord && formRecord.signatureName) || '';
     if (webFormSignedDate) webFormSignedDate.value = (formRecord && formRecord.signedDate) || new Date().toISOString().slice(0, 10);

@@ -4469,6 +4469,7 @@ app.get('/api/portal/onboarding/employees/:id/profile', authGuard(['admin', 'onb
   const backgroundConsentForm = getEmployeeBackgroundConsentForm(employee.id, { includeMeta: true });
   const hipaaComplianceForm = getEmployeeHipaaComplianceForm(employee.id, { includeMeta: true });
   const handbookForm = getEmployeeHandbookForm(employee.id, { includeMeta: true });
+  const compensationAgreementForm = getEmployeeCompensationAgreementForm(employee.id, { includeMeta: true });
   const onboardingStatus = computeEmployeeOnboardingStatus(employee.isActive, compliance, employee.backgroundStatus);
 
   const ssnRow = db.prepare('SELECT ssnEncrypted FROM employee_profiles WHERE userId = ?').get(employeeId);
@@ -4516,6 +4517,7 @@ app.get('/api/portal/onboarding/employees/:id/profile', authGuard(['admin', 'onb
     backgroundConsentForm,
     hipaaComplianceForm,
     handbookForm,
+    compensationAgreementForm,
   });
 });
 
@@ -9246,6 +9248,7 @@ app.get('/api/admin/employees/:id/profile', authGuard(['admin']), (req, res) => 
   const backgroundConsentForm = getEmployeeBackgroundConsentForm(employee.id, { includeMeta: true });
   const hipaaComplianceForm = getEmployeeHipaaComplianceForm(employee.id, { includeMeta: true });
   const handbookForm = getEmployeeHandbookForm(employee.id, { includeMeta: true });
+  const compensationAgreementForm = getEmployeeCompensationAgreementForm(employee.id, { includeMeta: true });
   const onboardingStatus = computeEmployeeOnboardingStatus(employee.isActive, compliance, employee.backgroundStatus);
 
   const ssnRow = db.prepare('SELECT ssnEncrypted FROM employee_profiles WHERE userId = ?').get(employeeId);
@@ -9293,6 +9296,7 @@ app.get('/api/admin/employees/:id/profile', authGuard(['admin']), (req, res) => 
     backgroundConsentForm,
     hipaaComplianceForm,
     handbookForm,
+    compensationAgreementForm,
   });
 });
 

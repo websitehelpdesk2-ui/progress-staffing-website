@@ -2581,6 +2581,28 @@ async function handlePortalNotificationAction(item) {
     return;
   }
 
+  if (item.category === 'activity' && adminPages.has(pageType) && (metadata.employeeId || metadata.newUserId)) {
+    const empId = asInt(metadata.employeeId || metadata.newUserId);
+    if (Number.isInteger(empId) && empId > 0) {
+      await loadAdminEmployeeDetail(empId);
+      return;
+    }
+  }
+
+  if (item.category === 'timesheet' && adminPages.has(pageType)) {
+    const tsSection = document.getElementById('adminTimesheetsSection');
+    if (tsSection) {
+      openPortalDrawerById('adminTimesheetsSection');
+      tsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    return;
+  }
+
+  if (item.category === 'activity' && pageType === 'employee') {
+    // Background status update — just mark read, already on the right page
+    return;
+  }
+
   if (item.url) {
     window.location.href = item.url;
   }

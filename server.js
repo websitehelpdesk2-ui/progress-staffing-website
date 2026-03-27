@@ -1962,6 +1962,9 @@ async function notifyAdminsAboutNewRegistration(userId, userName, userRole, comp
   await Promise.allSettled(admins.map((admin) => {
     const portalPath = getPortalPathForUser(admin);
     const url = isJobsite ? portalPath : buildPortalPath(portalPath, { task: 'employee-profile', employeeId: userId });
+    const metadata = isJobsite
+      ? { newUserId: userId, role: userRole }
+      : { employeeId: userId, role: userRole };
     return Promise.resolve(createPortalNotification({
       userId: admin.id,
       actorUserId: userId,
@@ -1969,7 +1972,7 @@ async function notifyAdminsAboutNewRegistration(userId, userName, userRole, comp
       title,
       body,
       url,
-      metadata: { newUserId: userId, role: userRole },
+      metadata,
       syncDomains: ['admin-dashboard'],
     }));
   }));
@@ -2461,7 +2464,8 @@ function getSessionUser(token) {
          u.notifySmsEnabled,
          u.notifyPushEnabled,
          u.requireBiometricSensitive,
-         u.isActive
+         u.isActive,
+         u.adminEmployeeIndustryTrack
        FROM sessions s
        JOIN users u ON u.id = s.userId
        WHERE s.tokenHash = ?
@@ -2484,6 +2488,7 @@ function getSessionUser(token) {
       push: Number(session.notifyPushEnabled) === 1,
     },
     requireBiometricSensitive: Number(session.requireBiometricSensitive) === 1,
+    adminEmployeeIndustryTrack: session.adminEmployeeIndustryTrack || null,
     tokenHash: session.tokenHash,
     sessionId: session.sessionId,
   };
@@ -12153,5 +12158,17 @@ app.listen(port, () => {
   // Check for contract renewals on startup and then hourly
   checkContractRenewals();
   setInterval(checkContractRenewals, 60 * 60 * 1000);
+
+  // Purge expired sessions every hour to prevent table bloat
+  const purgeExpiredSessions = () => {
+    try {
+      db.prepare("DELETE FROM sessions WHERE expiresAt <= strftime('%s', 'now')").run();
+    } catch (err) {
+      console.error('session purge failed:', err);
+    }
+  };
+  purgeExpiredSessions();
+  setInterval(purgeExpiredSessions, 60 * 60 * 1000);
+
   console.log(`Progress Staffing server running: http://localhost:${port}`);
 });

@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Accessibility Statement - Progress Staffing Agency</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="container header-inner">
+      <a class="logo" href="index.html">
+        <img class="logo__img" src="img.png" alt="Progress Staffing Agency" />
+        <span class="logo__text">Progress Staffing Agency</span>
+      </a>
+      <nav class="nav" aria-label="Primary">
+        <a href="index.html">Home</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="section section--alt">
+      <div class="container">
+        <h1>Accessibility Statement</h1>
+        <p class="section-subtitle">Last updated: March 27, 2026</p>
+
+        <article class="policy-content">
+
+          <h2>Our Commitment</h2>
+          <p>Progress Staffing Agency is committed to ensuring that our website and employee/client portal are accessible to all individuals, including those with disabilities. We strive to meet or exceed the standards set by the Web Content Accessibility Guidelines (WCAG) 2.1, Level AA, as published by the World Wide Web Consortium (W3C).</p>
+
+          <h2>Measures We Take</h2>
+          <p>To support accessibility, Progress Staffing Agency takes the following measures:</p>
+          <ul>
+            <li>Includes accessibility as part of our site design and development process</li>
+            <li>Uses semantic HTML elements to convey structure and meaning</li>
+            <li>Provides descriptive alternative text for images</li>
+            <li>Ensures form fields include associated labels for screen reader compatibility</li>
+            <li>Designs for keyboard navigability throughout the site and portal</li>
+            <li>Maintains sufficient color contrast ratios for text and interactive elements</li>
+            <li>Uses ARIA landmark roles and live region attributes to improve screen reader experience</li>
+            <li>Supports browser-level text resizing without loss of content or functionality</li>
+          </ul>
+
+          <h2>Known Limitations</h2>
+          <p>While we work continuously to improve accessibility, some older content or third-party integrations may not fully meet WCAG 2.1 AA standards. We are actively working to identify and address these gaps.</p>
+
+          <h2>Feedback &amp; Assistance</h2>
+          <p>We welcome your feedback on the accessibility of our website and portal. If you encounter any barriers or need assistance accessing any part of our site, please contact us:</p>
+          <ul>
+            <li>Email: <a class="link" href="mailto:info@progressstaffingagency.com">info@progressstaffingagency.com</a></li>
+            <li>Phone: <a class="link" href="tel:+17253165242">(725) 316-5242</a></li>
+            <li>Mail: 285 Ladies Tee Ct, Las Vegas, NV 89148</li>
+          </ul>
+          <p>We aim to respond to accessibility feedback within 3 business days.</p>
+
+          <h2>Alternative Access</h2>
+          <p>If you are unable to access any content or use any feature of our website due to a disability, please contact us via phone or email and we will work to provide the information or service you need through an alternative method.</p>
+
+          <h2>Formal Complaints</h2>
+          <p>If you are not satisfied with our response to an accessibility concern, you may contact relevant regulatory bodies or disability rights organizations in your jurisdiction.</p>
+
+          <h2>Technical Specifications</h2>
+          <p>Accessibility of this site relies on the following technologies:</p>
+          <ul>
+            <li>HTML5</li>
+            <li>CSS3</li>
+            <li>JavaScript (ES2020+)</li>
+            <li>WAI-ARIA 1.2</li>
+          </ul>
+
+          <h2>Assessment Approach</h2>
+          <p>Progress Staffing Agency assesses the accessibility of our site through self-evaluation and periodic reviews. We are committed to ongoing improvements as our platform evolves.</p>
+
+          <h2>Contact</h2>
+          <p>
+            Progress Staffing Agency<br />
+            285 Ladies Tee Ct, Las Vegas, NV 89148<br />
+            Phone: <a class="link" href="tel:+17253165242">(725) 316-5242</a><br />
+            Email: <a class="link" href="mailto:info@progressstaffingagency.com">info@progressstaffingagency.com</a>
+          </p>
+
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <div class="footer-brand">
+        <strong>Progress Staffing Agency</strong>
+        <p>Supporting warehouse and healthcare workforce growth.</p>
+      </div>
+      <div class="footer-links">
+        <div>
+          <h4>Legal</h4>
+          <a href="privacy-policy.html">Privacy Policy</a>
+          <a href="cookie-policy.html">Cookie Policy</a>
+          <a href="sms-terms.html">SMS Terms</a>
+          <a href="candidate-privacy.html">Candidate Privacy Notice</a>
+          <a href="disclaimer.html">Disclaimer</a>
+          <a href="accessibility.html">Accessibility Statement</a>
+        </div>
+      </div>
+    </div>
+    <div class="footer-copy">
+      <p>&copy; <span id="year"></span> Progress Staffing Agency. All rights reserved.</p>
+    </div>
+  </footer>
+
+  <script src="theme.js"></script>
+  <script>
+    const yearEl = document.getElementById('year');
+    if (yearEl) yearEl.textContent = new Date().getFullYear();
+  </script>
+</body>
+</html>

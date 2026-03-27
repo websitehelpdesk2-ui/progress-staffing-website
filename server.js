@@ -1250,6 +1250,7 @@ function canScopedAdminAccessPath(scope, requestPath) {
   if (normalizedScope === 'onboarding') {
     return pathValue === '/portal-onboarding'
       || pathValue.startsWith('/api/portal/onboarding')
+      || pathValue.startsWith('/api/admin/employees')
       || pathValue.startsWith('/api/admin/misc-docs')
       || pathValue.startsWith('/api/misc-docs/');
   }

@@ -2508,6 +2508,17 @@ body.theme-dark a {
   margin-top: 0.4rem;
 }
 
+.portal-webform-copy .portal-table th,
+.portal-webform-copy .portal-table td {
+  color: #1f3226;
+  border-bottom-color: rgba(63, 93, 74, 0.18);
+}
+
+.portal-webform-copy .portal-table th {
+  background: rgba(214, 233, 218, 0.45);
+  font-size: 0.8rem;
+}
+
 .portal-webform-modal__form {
   padding: 1rem 1.1rem 1.1rem;
   border-top: 1px solid rgba(63, 93, 74, 0.14);

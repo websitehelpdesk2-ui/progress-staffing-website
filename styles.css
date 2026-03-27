@@ -3466,3 +3466,161 @@ body.theme-dark a {
   .certify-checkbox { margin-top: 0.25rem; }
   max-width: 520px;
 }
+
+/* ═══════════════════════════════════════════════════════════════ */
+/* Mobile responsiveness improvements                              */
+/* ═══════════════════════════════════════════════════════════════ */
+
+/* ── Nav: horizontal scroll on narrow screens ─────────────────── */
+/* Prevents the nav pill from wrapping onto a second line          */
+@media (max-width: 640px) {
+  .nav {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+  }
+
+  .nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .nav a {
+    white-space: nowrap;
+    padding: 0.5rem 0.85rem;
+    font-size: 0.88rem;
+  }
+}
+
+/* ── Public page spacing — tablet range ───────────────────────── */
+@media (max-width: 768px) {
+  .section {
+    padding: 2.5rem 0;
+  }
+
+  .hero {
+    padding: 2.75rem 0 2rem;
+  }
+
+  .hero-media {
+    padding: 1.25rem;
+    border-radius: 22px;
+    margin-top: 0;
+  }
+
+  .contact-form {
+    padding: 1.5rem 1.25rem;
+  }
+
+  .site-footer {
+    padding: 2.25rem 0 1.75rem;
+  }
+
+  .footer-inner {
+    gap: 1.25rem;
+  }
+}
+
+/* ── Public page spacing — small mobile ───────────────────────── */
+@media (max-width: 480px) {
+  .section {
+    padding: 1.75rem 0;
+  }
+
+  .hero {
+    padding: 1.75rem 0 1.25rem;
+  }
+
+  .hero-media {
+    padding: 1rem;
+    border-radius: 18px;
+    margin-left: 0;
+    margin-right: 0;
+  }
+
+  .contact-form {
+    padding: 1.1rem 0.9rem;
+    border-radius: 14px;
+  }
+
+  /* Role selector: single column so tiles aren't too narrow */
+  .role-tile-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* Policy / legal pages: comfortable reading padding */
+  .policy-content {
+    padding: 1.25rem 1rem;
+  }
+
+  .footer-copy {
+    font-size: 0.83rem;
+    margin-top: 1.5rem;
+  }
+}
+
+/* ── Portal: additional 560 px fixes ──────────────────────────── */
+/* (supplements the existing @media (max-width: 560px) block)      */
+@media (max-width: 560px) {
+
+  /* Admin inline flex rows: wrap items instead of overflowing */
+  .admin-inline-row {
+    flex-wrap: wrap;
+  }
+
+  /* Fixed-width admin input fields become full-width on mobile */
+  .admin-compact-field--wide,
+  .admin-compact-field--narrow {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  /* Timesheet controls stack vertically */
+  .admin-timesheet-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  /* Two-column portal grid → single column */
+  .portal-account-form .portal-two-col-grid,
+  .portal-two-col-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* Portal button rows → stack vertically */
+  .portal-btn-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  /* Checklist items: doc name on top, action buttons below */
+  .checklist li {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .checklist-item-right {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  /* Assignment cards: info above actions */
+  .assignment-card {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.65rem;
+  }
+
+  /* Job cards: info above action buttons */
+  .job-card-item {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .job-card-item__actions {
+    flex-shrink: 1;
+    width: 100%;
+  }
+}

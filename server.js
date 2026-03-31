@@ -8,7 +8,13 @@ const rateLimit = require('express-rate-limit');
 const Database = require('better-sqlite3');
 const multer = require('multer');
 const { Server } = require('socket.io');
-const nodemailer = require('nodemailer');
+const {
+  isEmailServiceConfigured,
+  sendPasswordResetEmail,
+  sendOnboardingReminderEmail,
+  sendNotificationEmail,
+  sendSesTestEmail,
+} = require('./services/email-service');
 const twilio = require('twilio');
 const webpush = require('web-push');
 const {
@@ -44,12 +50,7 @@ const CONTRACTS_PORTAL_EMAIL = 'contracts@progressstaffingagency.com';
 const SCHEDULING_PORTAL_EMAIL = 'scheduling@progressstaffingagency.com';
 const ADMIN_SCOPES = new Set(['full', 'onboarding', 'contracts', 'scheduling']);
 const APP_BASE_URL = String(process.env.APP_BASE_URL || `http://localhost:${port}`).replace(/\/$/, '');
-const SMTP_HOST = process.env.SMTP_HOST || '';
-const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
-const SMTP_SECURE = String(process.env.SMTP_SECURE || '').trim().toLowerCase() === 'true';
-const SMTP_USER = process.env.SMTP_USER || '';
-const SMTP_PASS = process.env.SMTP_PASS || '';
-const EMAIL_FROM = process.env.EMAIL_FROM || ADMIN_EMAIL;
+const EMAIL_FROM = process.env.SES_FROM_EMAIL || process.env.EMAIL_FROM || 'onboarding@progressstaffingagency.com';
 const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID || '';
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN || '';
 const TWILIO_FROM_NUMBER = process.env.TWILIO_FROM_NUMBER || '';
@@ -261,15 +262,6 @@ const vapidKeys = loadOrCreateVapidKeys();
 if (vapidKeys) {
   webpush.setVapidDetails(VAPID_SUBJECT, vapidKeys.publicKey, vapidKeys.privateKey);
 }
-
-const mailTransport = SMTP_HOST
-  ? nodemailer.createTransport({
-      host: SMTP_HOST,
-      port: SMTP_PORT,
-      secure: SMTP_SECURE,
-      auth: SMTP_USER && SMTP_PASS ? { user: SMTP_USER, pass: SMTP_PASS } : undefined,
-    })
-  : null;
 
 const smsClient = TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN
   ? twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
@@ -1581,9 +1573,21 @@ async function sendEmailNotification(to, subject, text, html, userId = null) {
     const pref = db.prepare('SELECT notifyEmailEnabled FROM users WHERE id = ?').get(userId);
     if (pref && Number(pref.notifyEmailEnabled) !== 1) return { skipped: true, disabled: 'email' };
   }
-  if (!mailTransport || !to) return { skipped: true };
-  await mailTransport.sendMail({ from: EMAIL_FROM, to, subject, text, html });
-  return { sent: true };
+  if (!to) return { skipped: true, reason: 'missing-recipient' };
+  if (!isEmailServiceConfigured()) {
+    console.error('SES not configured. Email skipped.', { to, subject });
+    return { skipped: true, reason: 'ses-not-configured' };
+  }
+  try {
+    return await sendNotificationEmail({ to, subject, text, html });
+  } catch (error) {
+    console.error('Email notification failed:', {
+      to,
+      subject,
+      error: error && error.message ? error.message : String(error),
+    });
+    throw error;
+  }
 }
 
 async function sendSmsNotification(to, body, userId = null) {
@@ -3167,6 +3171,12 @@ async function sendEmployeePaperTimesheetReminder(options = {}) {
   const url = buildPortalPath('/portal-employee', { task: 'timesheets', periodStart, periodEnd });
 
   await Promise.allSettled([
+    sendOnboardingReminderEmail({
+      to: employee.email,
+      subject: title,
+      text: `${body}\n\nOpen portal: ${absolutePortalUrl(url)}`,
+      html: `<p>${escapeHtmlText(body)}</p><p><a href="${absolutePortalUrl(url)}">Open Portal</a></p>`,
+    }),
     sendPushNotificationToUser(employeeUserId, {
       title,
       body,
@@ -3234,6 +3244,12 @@ async function sendEmployeeDocumentReminder(options = {}) {
   }
 
   await Promise.allSettled([
+    sendOnboardingReminderEmail({
+      to: employee.email,
+      subject: title,
+      text: `${body}\n\nOpen portal: ${absolutePortalUrl(url)}`,
+      html: `<p>${escapeHtmlText(body)}</p><p><a href="${absolutePortalUrl(url)}">Open Portal</a></p>`,
+    }),
     sendPushNotificationToUser(employeeUserId, {
       title,
       body,
@@ -5863,7 +5879,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
       const subject = 'Progress Staffing Agency — Password Reset';
       const text = `Hi ${user.name || 'there'},\n\nYou requested a password reset. Click the link below to set a new password. This link expires in 1 hour.\n\n${resetUrl}\n\nIf you did not request this, please ignore this email.`;
       const html = `<p>Hi ${escapeHtmlText(user.name || 'there')},</p><p>You requested a password reset. Click the link below to set a new password. This link expires in 1 hour.</p><p><a href="${resetUrl}">Reset My Password</a></p><p>If you did not request this, please ignore this email.</p>`;
-      await sendEmailNotification(deliveryTarget, subject, text, html);
+      await sendPasswordResetEmail({ to: deliveryTarget, subject, text, html });
     } else if (deliveryMode === 'sms') {
       const body = `Progress Staffing: Reset your password here (expires in 1 hour): ${resetUrl}`;
       await sendSmsNotification(deliveryTarget, body);
@@ -5905,7 +5921,20 @@ app.post('/api/auth/reset-password', (req, res) => {
 });
 
 app.get('/api/auth/me', authGuard(), (req, res) => {
-  res.json({ user: sanitizeUser(req.auth), smtpConfigured: Boolean(mailTransport) });
+  res.json({ user: sanitizeUser(req.auth), smtpConfigured: isEmailServiceConfigured() });
+});
+
+app.post('/api/admin/test-email', authGuard(['admin']), async (req, res) => {
+  const to = String((req.body && req.body.to) || req.auth.email || '').trim().toLowerCase();
+  if (!to) return res.status(400).json({ error: 'Recipient email is required.' });
+
+  try {
+    const result = await sendSesTestEmail(to);
+    return res.json({ sent: true, to, result });
+  } catch (error) {
+    console.error('SES test email failed:', error);
+    return res.status(500).json({ error: 'Failed to send SES test email.' });
+  }
 });
 
 app.get('/api/users/:id', authGuard(['admin']), (req, res) => {

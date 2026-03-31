@@ -1,11 +1,13 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const http = require('http');
 const express = require('express');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const Database = require('better-sqlite3');
 const multer = require('multer');
+const { Server } = require('socket.io');
 const nodemailer = require('nodemailer');
 const twilio = require('twilio');
 const webpush = require('web-push');
@@ -17,6 +19,8 @@ const {
 } = require('@simplewebauthn/server');
 
 const app = express();
+const server = http.createServer(app);
+const io = new Server(server, { cors: { origin: '*', methods: ['GET', 'POST'] } });
 const port = process.env.PORT || 3000;
 
 const dataDir = path.join(__dirname, 'data');
@@ -1393,6 +1397,10 @@ function emitRealtimeEventToUser(userId, eventName, payload) {
       // Ignore stream write failures. The close handler removes dead clients.
     }
   });
+}
+
+function emitSocketEventToAdmins(eventName, payload) {
+  io.emit(String(eventName || 'event'), payload || {});
 }
 
 function createPortalNotification(options = {}) {
@@ -3975,10 +3983,14 @@ ensureColumn('users', 'passcodeSalt', 'TEXT');
 ensureColumn('users', 'notifyEmailEnabled', 'INTEGER NOT NULL DEFAULT 1');
 ensureColumn('users', 'notifySmsEnabled', 'INTEGER NOT NULL DEFAULT 1');
 ensureColumn('users', 'notifyPushEnabled', 'INTEGER NOT NULL DEFAULT 1');
+ensureColumn('users', 'isVerified', 'INTEGER NOT NULL DEFAULT 0');
+ensureColumn('users', 'emailVerificationToken', 'TEXT');
+ensureColumn('users', 'emailVerificationExpiresAt', 'INTEGER');
 ensureColumn('users', 'portalScope', "TEXT NOT NULL DEFAULT 'full'");
 ensureColumn('users', 'requireBiometricSensitive', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('users', 'adminEmployeeIndustryTrack', "TEXT DEFAULT NULL");
 db.prepare("UPDATE users SET portalScope = 'full' WHERE portalScope IS NULL OR TRIM(portalScope) = ''").run();
+db.prepare("UPDATE users SET isVerified = 1 WHERE role = 'admin' AND (isVerified IS NULL OR isVerified = 0)").run();
 ensureColumn('employee_profiles', 'address', 'TEXT');
 ensureColumn('employee_profiles', 'city', 'TEXT');
 ensureColumn('employee_profiles', 'state', 'TEXT');
@@ -4136,6 +4148,7 @@ app.use('/api/auth/login', loginLimiter);
 app.use('/api/auth/passkey/login', loginLimiter);
 app.use('/api/auth/passkey/action', loginLimiter);
 app.use('/api/auth/register', registerLimiter);
+app.use('/api/register', registerLimiter);
 app.use('/api/auth/forgot-password', createLimiter(15 * 60 * 1000, 5, 'Too many password reset requests. Please try again later.'));
 app.use('/api/auth/reset-password', createLimiter(15 * 60 * 1000, 10, 'Too many password reset attempts. Please try again later.'));
 app.use('/api/apply', applyLimiter);
@@ -5202,11 +5215,13 @@ app.post('/api/auth/register', async (req, res) => {
 
   const { salt, hash } = hashPassword(password);
   const passcodeRecord = normalizedPasscode ? hashPassword(normalizedPasscode) : null;
+  const emailVerificationToken = crypto.randomBytes(32).toString('hex');
+  const emailVerificationExpiresAt = Date.now() + (24 * 60 * 60 * 1000);
 
   const tx = db.transaction(() => {
     const userInfo = db
       .prepare(
-        'INSERT INTO users (name, email, role, passwordHash, passwordSalt, passcodeHash, passcodeSalt) VALUES (?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO users (name, email, role, passwordHash, passwordSalt, passcodeHash, passcodeSalt, isVerified, emailVerificationToken, emailVerificationExpiresAt) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)'
       )
       .run(
         name.trim(),
@@ -5215,7 +5230,9 @@ app.post('/api/auth/register', async (req, res) => {
         hash,
         salt,
         passcodeRecord ? passcodeRecord.hash : null,
-        passcodeRecord ? passcodeRecord.salt : null
+        passcodeRecord ? passcodeRecord.salt : null,
+        emailVerificationToken,
+        emailVerificationExpiresAt
       );
 
     const userId = Number(userInfo.lastInsertRowid);
@@ -5291,6 +5308,16 @@ app.post('/api/auth/register', async (req, res) => {
 
   try {
     const userId = tx();
+    const verifyUrl = `${APP_BASE_URL}/api/verify-email?token=${encodeURIComponent(emailVerificationToken)}`;
+    runAsyncTask('send_registration_verification_email', () =>
+      sendEmailNotification(
+        normalizedEmail,
+        'Verify your email address',
+        `Welcome to Progress Staffing Agency. Verify your email: ${verifyUrl}`,
+        `<p>Welcome to Progress Staffing Agency.</p><p>Please verify your email by clicking this link:</p><p><a href="${verifyUrl}">${verifyUrl}</a></p>`
+      )
+    );
+    emitSocketEventToAdmins('new-user-signup', { id: userId, email: normalizedEmail, name: String(name || '').trim() });
     runAsyncTask('notify_admins_new_registration', () =>
       notifyAdminsAboutNewRegistration(userId, name, normalizedRole, companyName)
     );
@@ -5301,6 +5328,21 @@ app.post('/api/auth/register', async (req, res) => {
     }
     throw error;
   }
+});
+
+app.post('/api/register', (req, res) => {
+  res.redirect(307, '/api/auth/register');
+});
+
+app.get('/api/verify-email', (req, res) => {
+  const token = String(req.query.token || '').trim();
+  if (!token) return res.status(400).json({ error: 'Missing verification token.' });
+  const user = db.prepare('SELECT id, emailVerificationExpiresAt FROM users WHERE emailVerificationToken = ? LIMIT 1').get(token);
+  if (!user || Number(user.emailVerificationExpiresAt || 0) < Date.now()) {
+    return res.status(400).json({ error: 'Invalid or expired verification link.' });
+  }
+  db.prepare('UPDATE users SET isVerified = 1, emailVerificationToken = NULL, emailVerificationExpiresAt = NULL WHERE id = ?').run(user.id);
+  return res.send('<h2>Email verified successfully.</h2><p>You can now log in to your portal.</p>');
 });
 
 app.get('/api/account/passkeys', authGuard(), (req, res) => {
@@ -5715,7 +5757,7 @@ app.post('/api/auth/login', (req, res) => {
   }
 
   const user = db
-    .prepare('SELECT id, name, email, role, portalScope, passwordHash, passwordSalt, passcodeHash, passcodeSalt, isActive, notifyEmailEnabled, notifySmsEnabled, notifyPushEnabled, requireBiometricSensitive FROM users WHERE email = ?')
+    .prepare('SELECT id, name, email, role, portalScope, passwordHash, passwordSalt, passcodeHash, passcodeSalt, isActive, isVerified, notifyEmailEnabled, notifySmsEnabled, notifyPushEnabled, requireBiometricSensitive FROM users WHERE email = ?')
     .get(normalizedEmail);
 
   let isValid = false;
@@ -5731,6 +5773,9 @@ app.post('/api/auth/login', (req, res) => {
 
   if (!isValid) {
     return res.status(401).json({ error: 'Invalid credentials.' });
+  }
+  if ((user.role === 'employee' || user.role === 'jobsite') && Number(user.isVerified) !== 1) {
+    return res.status(403).json({ error: 'Please verify your email before logging in.' });
   }
 
   db.prepare('UPDATE users SET lastLoginAt = CURRENT_TIMESTAMP WHERE id = ?').run(user.id);
@@ -5861,6 +5906,20 @@ app.post('/api/auth/reset-password', (req, res) => {
 
 app.get('/api/auth/me', authGuard(), (req, res) => {
   res.json({ user: sanitizeUser(req.auth), smtpConfigured: Boolean(mailTransport) });
+});
+
+app.get('/api/users/:id', authGuard(['admin']), (req, res) => {
+  const userId = Number(req.params.id);
+  if (!Number.isInteger(userId) || userId < 1) return res.status(400).json({ error: 'Invalid user id.' });
+  const user = db.prepare('SELECT id, name, email, role, isVerified, createdAt, lastLoginAt FROM users WHERE id = ? LIMIT 1').get(userId);
+  if (!user) return res.status(404).json({ error: 'User not found.' });
+  if (user.role === 'employee') {
+    const profile = db.prepare('SELECT phone, address, city, state, zip, backgroundStatus FROM employee_profiles WHERE userId = ?').get(userId) || {};
+    const appRow = db.prepare('SELECT industry, position FROM applications WHERE userId = ? OR email = ? ORDER BY createdAt DESC LIMIT 1').get(userId, user.email) || {};
+    return res.json({ user: { ...user, profile: { ...profile, industry: appRow.industry || null, position: appRow.position || null } } });
+  }
+  const profile = db.prepare('SELECT companyName, contactName, phone, address, industryTrack FROM jobsite_profiles WHERE userId = ?').get(userId) || {};
+  return res.json({ user: { ...user, profile } });
 });
 
 app.get('/api/portal/documents/:id/file', authGuard(), (req, res) => {
@@ -12167,7 +12226,7 @@ function checkContractRenewals() {
   }
 }
 
-app.listen(port, () => {
+server.listen(port, () => {
   startExpirationReminderScheduler();
   startPaperTimesheetReminderScheduler();
   // Check for contract renewals on startup and then hourly

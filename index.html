@@ -197,6 +197,15 @@
     </div>
   </footer>
 
+  <section id="adminRealtimePanel" class="section" style="display:none;padding-top:1rem">
+    <div class="container">
+      <h2 style="margin-bottom:0.5rem">Admin Notifications</h2>
+      <ul id="adminNotificationList" style="margin:0 0 1rem 1rem;padding:0"></ul>
+      <pre id="adminUserProfileView" style="white-space:pre-wrap;background:#f7f7f7;padding:0.75rem;border-radius:8px"></pre>
+    </div>
+  </section>
+
+  <script src="/socket.io/socket.io.js"></script>
   <script src="theme.js"></script>
   <script>
     const yearEl = document.getElementById('year');
@@ -220,6 +229,39 @@
     tabButtons.forEach((btn) => {
       btn.addEventListener('click', () => setActiveTab(btn.dataset.tab));
     });
+
+    (async () => {
+      const panel = document.getElementById('adminRealtimePanel');
+      const list = document.getElementById('adminNotificationList');
+      const profileView = document.getElementById('adminUserProfileView');
+      if (!panel || !list || !profileView || typeof io !== 'function') return;
+
+      try {
+        const meRes = await fetch('/api/auth/me', { credentials: 'include' });
+        if (!meRes.ok) return;
+        const meData = await meRes.json();
+        if (!meData || !meData.user || meData.user.role !== 'admin') return;
+
+        panel.style.display = 'block';
+        const socket = io();
+        socket.on('new-user-signup', (payload) => {
+          if (!payload || !payload.id) return;
+          const li = document.createElement('li');
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.textContent = `New signup: ${payload.name || 'User'} (${payload.email || 'No email'})`;
+          btn.addEventListener('click', async () => {
+            const res = await fetch(`/api/users/${payload.id}`, { credentials: 'include' });
+            const data = await res.json();
+            profileView.textContent = JSON.stringify(data, null, 2);
+          });
+          li.appendChild(btn);
+          list.insertBefore(li, list.firstChild);
+        });
+      } catch (_error) {
+        // keep page behavior unchanged if admin realtime setup fails
+      }
+    })();
   </script>
 </body>
 </html>

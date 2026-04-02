@@ -13,7 +13,7 @@ const {
   sendPasswordResetEmail,
   sendOnboardingReminderEmail,
   sendNotificationEmail,
-  sendSesTestEmail,
+  sendPostmarkTestEmail,
 } = require('./services/email-service');
 const twilio = require('twilio');
 const webpush = require('web-push');
@@ -50,7 +50,9 @@ const CONTRACTS_PORTAL_EMAIL = 'contracts@progressstaffingagency.com';
 const SCHEDULING_PORTAL_EMAIL = 'scheduling@progressstaffingagency.com';
 const ADMIN_SCOPES = new Set(['full', 'onboarding', 'contracts', 'scheduling']);
 const APP_BASE_URL = String(process.env.APP_BASE_URL || `http://localhost:${port}`).replace(/\/$/, '');
-const EMAIL_FROM = process.env.SES_FROM_EMAIL || process.env.EMAIL_FROM || 'onboarding@progressstaffingagency.com';
+const EMAIL_FROM = process.env.EMAIL_FROM || 'onboarding@progressstaffingagency.com';
+const EMAIL_REPLY_TO = process.env.EMAIL_REPLY_TO || 'onboarding@progressstaffingagency.com';
+const POSTMARK_SERVER_TOKEN = String(process.env.POSTMARK_SERVER_TOKEN || '').trim();
 const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID || '';
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN || '';
 const TWILIO_FROM_NUMBER = process.env.TWILIO_FROM_NUMBER || '';
@@ -66,8 +68,48 @@ const SENSITIVE_PASSKEY_ACTIONS = new Set([
 
 const passkeyChallenges = new Map();
 const passkeyActionProofs = new Map();
-const passwordResetTokens = new Map();
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
+const EMAIL_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000;
+
+function getMissingEmailEnvVars() {
+  return [
+    ['POSTMARK_SERVER_TOKEN', POSTMARK_SERVER_TOKEN],
+    ['EMAIL_FROM', EMAIL_FROM],
+    ['EMAIL_REPLY_TO', EMAIL_REPLY_TO],
+  ]
+    .filter(([, value]) => !String(value || '').trim())
+    .map(([name]) => name);
+}
+
+function validateEmailEnvironment() {
+  const missingVars = getMissingEmailEnvVars();
+  if (!missingVars.length) return;
+
+  throw new Error(`Missing required email environment variables: ${missingVars.join(', ')}`);
+}
+
+function serializeError(error) {
+  if (!error) return null;
+  return {
+    name: error.name || 'Error',
+    message: error.message || String(error),
+    code: error.code || null,
+    stack: error.stack || null,
+  };
+}
+
+function logFlowEvent(event, details = {}) {
+  console.info(`[email-flow] ${event}`, details);
+}
+
+function logCaughtException(context, error, details = {}) {
+  console.error(`[exception] ${context}`, {
+    ...details,
+    error: serializeError(error),
+  });
+}
+
+validateEmailEnvironment();
 
 function resolvePasskeyRpId() {
   if (process.env.WEBAUTHN_RP_ID) {
@@ -461,6 +503,15 @@ function initDatabase() {
     );
 
     CREATE TABLE IF NOT EXISTS sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      userId INTEGER NOT NULL,
+      tokenHash TEXT NOT NULL UNIQUE,
+      expiresAt INTEGER NOT NULL,
+      createdAt INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+      FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       userId INTEGER NOT NULL,
       tokenHash TEXT NOT NULL UNIQUE,
@@ -997,6 +1048,136 @@ function hashToken(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
 
+function cleanupExpiredPasswordResetTokens() {
+  return db.prepare('DELETE FROM password_reset_tokens WHERE expiresAt <= ?').run(Date.now());
+}
+
+function createPasswordResetTokenRecord(userId) {
+  const rawToken = crypto.randomBytes(32).toString('hex');
+  const tokenHash = hashToken(rawToken);
+  const expiresAt = Date.now() + RESET_TOKEN_TTL_MS;
+
+  db.prepare('DELETE FROM password_reset_tokens WHERE userId = ?').run(userId);
+  db.prepare(
+    'INSERT INTO password_reset_tokens (userId, tokenHash, expiresAt) VALUES (?, ?, ?)'
+  ).run(userId, tokenHash, expiresAt);
+
+  logFlowEvent('password reset token created', { userId, tokenHash, expiresAt });
+
+  return {
+    rawToken,
+    tokenHash,
+    expiresAt,
+  };
+}
+
+function consumePasswordResetTokenRecord(rawToken) {
+  const tokenHash = hashToken(rawToken);
+  const record = db
+    .prepare('SELECT id, userId, expiresAt FROM password_reset_tokens WHERE tokenHash = ? LIMIT 1')
+    .get(tokenHash);
+
+  if (!record || Number(record.expiresAt || 0) < Date.now()) {
+    db.prepare('DELETE FROM password_reset_tokens WHERE tokenHash = ?').run(tokenHash);
+    return null;
+  }
+
+  db.prepare('DELETE FROM password_reset_tokens WHERE id = ?').run(record.id);
+  return record;
+}
+
+function createEmailVerificationTokenRecord(userId) {
+  const rawToken = crypto.randomBytes(32).toString('hex');
+  const expiresAt = Date.now() + EMAIL_VERIFICATION_TTL_MS;
+
+  logFlowEvent('verification token created', { userId, tokenPreview: `${rawToken.slice(0, 8)}...`, expiresAt });
+  db.prepare(
+    'UPDATE users SET isVerified = 0, emailVerificationToken = ?, emailVerificationExpiresAt = ? WHERE id = ?'
+  ).run(rawToken, expiresAt, userId);
+  logFlowEvent('verification token saved', { userId, expiresAt });
+
+  return {
+    rawToken,
+    expiresAt,
+  };
+}
+
+function buildVerificationEmailPayload(user, verificationUrl) {
+  const safeName = escapeHtmlText(user.name || 'there');
+  return {
+    subject: 'Verify your Progress Staffing Agency account',
+    text: `Hi ${user.name || 'there'},\n\nWelcome to Progress Staffing Agency. Verify your email address by opening the link below:\n\n${verificationUrl}\n\nIf you did not create this account, you can ignore this email.`,
+    html: `<p>Hi ${safeName},</p><p>Welcome to Progress Staffing Agency.</p><p>Please verify your email address by clicking the link below:</p><p><a href="${verificationUrl}">Verify My Email</a></p><p>If you did not create this account, you can ignore this email.</p>`,
+  };
+}
+
+async function sendAccountVerificationEmail(user, reason = 'registration') {
+  const verification = createEmailVerificationTokenRecord(user.id);
+  const verificationUrl = `${APP_BASE_URL}/api/verify-email?token=${encodeURIComponent(verification.rawToken)}`;
+  const emailPayload = buildVerificationEmailPayload(user, verificationUrl);
+
+  logFlowEvent('verification URL generated', {
+    userId: user.id,
+    email: user.email,
+    reason,
+    verificationUrl,
+    expiresAt: verification.expiresAt,
+  });
+
+  const providerResult = await sendNotificationEmail({
+    to: user.email,
+    subject: emailPayload.subject,
+    text: emailPayload.text,
+    html: emailPayload.html,
+    replyTo: EMAIL_REPLY_TO,
+    logContext: `account_verification:${reason}`,
+  });
+
+  return {
+    verificationUrl,
+    expiresAt: verification.expiresAt,
+    providerResult,
+  };
+}
+
+function buildPasswordResetEmailPayload(user, resetUrl) {
+  const safeName = escapeHtmlText(user.name || 'there');
+  return {
+    subject: 'Progress Staffing Agency - Password Reset',
+    text: `Hi ${user.name || 'there'},\n\nYou requested a password reset. Click the link below to set a new password. This link expires in 1 hour.\n\n${resetUrl}\n\nIf you did not request this, please ignore this email.`,
+    html: `<p>Hi ${safeName},</p><p>You requested a password reset. Click the link below to set a new password. This link expires in 1 hour.</p><p><a href="${resetUrl}">Reset My Password</a></p><p>If you did not request this, please ignore this email.</p>`,
+  };
+}
+
+async function sendPasswordResetEmailForUser(user, reason = 'forgot_password') {
+  const resetRecord = createPasswordResetTokenRecord(user.id);
+  const resetUrl = `${APP_BASE_URL}/portal-login?resetToken=${encodeURIComponent(resetRecord.rawToken)}`;
+  const emailPayload = buildPasswordResetEmailPayload(user, resetUrl);
+
+  logFlowEvent('password reset email attempted', {
+    userId: user.id,
+    email: user.email,
+    reason,
+    resetUrl,
+    expiresAt: resetRecord.expiresAt,
+  });
+
+  const providerResult = await sendPasswordResetEmail({
+    to: user.email,
+    subject: emailPayload.subject,
+    text: emailPayload.text,
+    html: emailPayload.html,
+    replyTo: EMAIL_REPLY_TO,
+    logContext: `password_reset:${reason}`,
+  });
+
+  return {
+    resetUrl,
+    expiresAt: resetRecord.expiresAt,
+    providerResult,
+  };
+}
+
 // SSN encryption (AES-256-GCM) — key derived from server secret, never stored.
 const SSN_ENCRYPTION_KEY = crypto.scryptSync(
   process.env.SSN_SECRET || 'progress-staffing-ssn-key-v1',
@@ -1183,7 +1364,7 @@ function runAsyncTask(label, taskFactory) {
   Promise.resolve()
     .then(taskFactory)
     .catch((error) => {
-      console.error(`${label} failed:`, error);
+      logCaughtException(label, error);
     });
 }
 
@@ -1568,23 +1749,30 @@ function getUserPhoneNumber(userId, role) {
   return '';
 }
 
-async function sendEmailNotification(to, subject, text, html, userId = null) {
+async function sendEmailNotification(to, subject, text, html, userId = null, emailOptions = {}) {
   if (Number.isInteger(userId) && userId > 0) {
     const pref = db.prepare('SELECT notifyEmailEnabled FROM users WHERE id = ?').get(userId);
     if (pref && Number(pref.notifyEmailEnabled) !== 1) return { skipped: true, disabled: 'email' };
   }
   if (!to) return { skipped: true, reason: 'missing-recipient' };
   if (!isEmailServiceConfigured()) {
-    console.error('SES not configured. Email skipped.', { to, subject });
-    return { skipped: true, reason: 'ses-not-configured' };
+    console.error('Postmark not configured. Email skipped.', { to, subject });
+    return { skipped: true, reason: 'postmark-not-configured' };
   }
   try {
-    return await sendNotificationEmail({ to, subject, text, html });
-  } catch (error) {
-    console.error('Email notification failed:', {
+    return await sendNotificationEmail({
       to,
       subject,
-      error: error && error.message ? error.message : String(error),
+      text,
+      html,
+      replyTo: EMAIL_REPLY_TO,
+      logContext: emailOptions.logContext,
+    });
+  } catch (error) {
+    logCaughtException('sendEmailNotification', error, {
+      to,
+      subject,
+      logContext: emailOptions.logContext || null,
     });
     throw error;
   }
@@ -5172,6 +5360,7 @@ app.post('/api/portal/contracts/send-bank/:id', authGuard(['admin']), (req, res)
 
 app.post('/api/auth/register', async (req, res) => {
   const { name, email, password, passcode, role, phone, companyName, contactName, address, city, state, zip, industry, position, certifyAgreement, industryTrack } = req.body;
+  const normalizedName = String(name || '').trim();
   const normalizedEmail = String(email || '').trim().toLowerCase();
   const normalizedRole = String(role || '').trim().toLowerCase();
   const normalizedPasscode = normalizePasscode(passcode);
@@ -5183,7 +5372,14 @@ app.post('/api/auth/register', async (req, res) => {
     .filter(Boolean)
     .join(', ');
 
-  if (!name || !normalizedEmail || !password || !normalizedRole) {
+  logFlowEvent('registration request received', {
+    email: normalizedEmail,
+    role: normalizedRole,
+    hasPhone: Boolean(normalizedPhone),
+    hasCompanyName: Boolean(String(companyName || '').trim()),
+  });
+
+  if (!normalizedName || !normalizedEmail || !password || !normalizedRole) {
     return res.status(400).json({ error: 'Missing required fields.' });
   }
 
@@ -5220,35 +5416,54 @@ app.post('/api/auth/register', async (req, res) => {
     return res.status(400).json({ error: 'Primary contact name is required for client accounts.' });
   }
 
+  const existingUser = db
+    .prepare('SELECT id, name, email, role, isVerified, isActive FROM users WHERE email = ? LIMIT 1')
+    .get(normalizedEmail);
+
+  if (existingUser) {
+    if (String(existingUser.role || '').trim().toLowerCase() !== normalizedRole || Number(existingUser.isVerified) === 1) {
+      return res.status(409).json({ error: 'Account already exists for this email. Duplicate registration is not allowed unless the existing account is deleted.' });
+    }
+
+    try {
+      const verificationResult = await sendAccountVerificationEmail(existingUser, 'registration_retry');
+      return res.status(202).json({
+        id: existingUser.id,
+        role: normalizedRole,
+        verificationRequired: true,
+        verificationEmailSent: true,
+        verificationEmailResent: true,
+        verificationExpiresAt: verificationResult.expiresAt,
+      });
+    } catch (error) {
+      logCaughtException('registration resend verification email', error, {
+        userId: existingUser.id,
+        email: normalizedEmail,
+      });
+      return res.status(502).json({ error: 'Your account exists but the verification email could not be sent right now. Please try again shortly.' });
+    }
+  }
+
   const geocodedJobsiteCoordinates = normalizedRole === 'jobsite' && normalizedAddress
     ? await geocodeAddressToCoordinates(normalizedAddress)
     : null;
 
-  const exists = db.prepare('SELECT id FROM users WHERE email = ?').get(normalizedEmail);
-  if (exists) {
-    return res.status(409).json({ error: 'Account already exists for this email. Duplicate registration is not allowed unless the existing account is deleted.' });
-  }
-
   const { salt, hash } = hashPassword(password);
   const passcodeRecord = normalizedPasscode ? hashPassword(normalizedPasscode) : null;
-  const emailVerificationToken = crypto.randomBytes(32).toString('hex');
-  const emailVerificationExpiresAt = Date.now() + (24 * 60 * 60 * 1000);
 
   const tx = db.transaction(() => {
     const userInfo = db
       .prepare(
-        'INSERT INTO users (name, email, role, passwordHash, passwordSalt, passcodeHash, passcodeSalt, isVerified, emailVerificationToken, emailVerificationExpiresAt) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)'
+        'INSERT INTO users (name, email, role, passwordHash, passwordSalt, passcodeHash, passcodeSalt, isVerified, emailVerificationToken, emailVerificationExpiresAt) VALUES (?, ?, ?, ?, ?, ?, ?, 0, NULL, NULL)'
       )
       .run(
-        name.trim(),
+        normalizedName,
         normalizedEmail,
         normalizedRole,
         hash,
         salt,
         passcodeRecord ? passcodeRecord.hash : null,
-        passcodeRecord ? passcodeRecord.salt : null,
-        emailVerificationToken,
-        emailVerificationExpiresAt
+        passcodeRecord ? passcodeRecord.salt : null
       );
 
     const userId = Number(userInfo.lastInsertRowid);
@@ -5281,7 +5496,7 @@ app.post('/api/auth/register', async (req, res) => {
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         ).run(
           userId,
-          name.trim(),
+          normalizedName,
           normalizedEmail,
           normalizedPhone || '',
           address ? String(address).trim() : '',
@@ -5324,25 +5539,38 @@ app.post('/api/auth/register', async (req, res) => {
 
   try {
     const userId = tx();
-    const verifyUrl = `${APP_BASE_URL}/api/verify-email?token=${encodeURIComponent(emailVerificationToken)}`;
-    runAsyncTask('send_registration_verification_email', () =>
-      sendEmailNotification(
-        normalizedEmail,
-        'Verify your email address',
-        `Welcome to Progress Staffing Agency. Verify your email: ${verifyUrl}`,
-        `<p>Welcome to Progress Staffing Agency.</p><p>Please verify your email by clicking this link:</p><p><a href="${verifyUrl}">${verifyUrl}</a></p>`
-      )
-    );
-    emitSocketEventToAdmins('new-user-signup', { id: userId, email: normalizedEmail, name: String(name || '').trim() });
+    logFlowEvent('user created', {
+      userId,
+      email: normalizedEmail,
+      role: normalizedRole,
+    });
+
+    const verificationResult = await sendAccountVerificationEmail({
+      id: userId,
+      name: normalizedName,
+      email: normalizedEmail,
+    }, 'registration');
+
+    emitSocketEventToAdmins('new-user-signup', { id: userId, email: normalizedEmail, name: normalizedName });
     runAsyncTask('notify_admins_new_registration', () =>
-      notifyAdminsAboutNewRegistration(userId, name, normalizedRole, companyName)
+      notifyAdminsAboutNewRegistration(userId, normalizedName, normalizedRole, companyName)
     );
-    return res.status(201).json({ id: userId, role: normalizedRole });
+    return res.status(201).json({
+      id: userId,
+      role: normalizedRole,
+      verificationRequired: true,
+      verificationEmailSent: true,
+      verificationExpiresAt: verificationResult.expiresAt,
+    });
   } catch (error) {
+    logCaughtException('registration flow', error, {
+      email: normalizedEmail,
+      role: normalizedRole,
+    });
     if (error && String(error.code || '').includes('SQLITE_CONSTRAINT')) {
       return res.status(409).json({ error: 'Account already exists for this email. Duplicate registration is not allowed unless the existing account is deleted.' });
     }
-    throw error;
+    return res.status(500).json({ error: 'Registration failed. Please try again.' });
   }
 });
 
@@ -5350,15 +5578,64 @@ app.post('/api/register', (req, res) => {
   res.redirect(307, '/api/auth/register');
 });
 
+app.post('/api/auth/resend-verification', async (req, res) => {
+  const email = String(req.body && req.body.email || '').trim().toLowerCase();
+  if (!email) {
+    return res.status(400).json({ error: 'Email is required.' });
+  }
+
+  const user = db
+    .prepare('SELECT id, name, email, role, isVerified, isActive FROM users WHERE email = ? LIMIT 1')
+    .get(email);
+
+  if (!user || !user.isActive) {
+    return res.json({ sent: true, message: 'If an eligible account exists, a verification email has been sent.' });
+  }
+
+  if (!['employee', 'jobsite'].includes(String(user.role || '').trim().toLowerCase())) {
+    return res.json({ sent: true, message: 'If an eligible account exists, a verification email has been sent.' });
+  }
+
+  if (Number(user.isVerified) === 1) {
+    return res.status(400).json({ error: 'This account is already verified.' });
+  }
+
+  try {
+    const verificationResult = await sendAccountVerificationEmail(user, 'manual_resend');
+    return res.json({
+      sent: true,
+      verificationRequired: true,
+      verificationExpiresAt: verificationResult.expiresAt,
+      message: 'Verification email sent.',
+    });
+  } catch (error) {
+    logCaughtException('resend verification email', error, { email });
+    return res.status(502).json({ error: 'Verification email could not be sent right now. Please try again shortly.' });
+  }
+});
+
 app.get('/api/verify-email', (req, res) => {
   const token = String(req.query.token || '').trim();
-  if (!token) return res.status(400).json({ error: 'Missing verification token.' });
-  const user = db.prepare('SELECT id, emailVerificationExpiresAt FROM users WHERE emailVerificationToken = ? LIMIT 1').get(token);
-  if (!user || Number(user.emailVerificationExpiresAt || 0) < Date.now()) {
-    return res.status(400).json({ error: 'Invalid or expired verification link.' });
+  if (!token) {
+    return res.status(400).send('<h2>Verification link is missing.</h2><p>Please request a new verification email and try again.</p>');
   }
-  db.prepare('UPDATE users SET isVerified = 1, emailVerificationToken = NULL, emailVerificationExpiresAt = NULL WHERE id = ?').run(user.id);
-  return res.send('<h2>Email verified successfully.</h2><p>You can now log in to your portal.</p>');
+
+  try {
+    const user = db
+      .prepare('SELECT id, email, emailVerificationExpiresAt FROM users WHERE emailVerificationToken = ? LIMIT 1')
+      .get(token);
+
+    if (!user || Number(user.emailVerificationExpiresAt || 0) < Date.now()) {
+      return res.status(400).send('<h2>Verification link is invalid or expired.</h2><p>Please request a new verification email and try again.</p>');
+    }
+
+    db.prepare('UPDATE users SET isVerified = 1, emailVerificationToken = NULL, emailVerificationExpiresAt = NULL WHERE id = ?').run(user.id);
+    logFlowEvent('email verified', { userId: user.id, email: user.email });
+    return res.send('<h2>Email verified successfully.</h2><p>You can now log in to your portal.</p><p><a href="/portal-login">Go to portal login</a></p>');
+  } catch (error) {
+    logCaughtException('verify email route', error, { tokenPreview: `${token.slice(0, 8)}...` });
+    return res.status(500).send('<h2>Verification failed.</h2><p>Please try again or request a new verification email.</p>');
+  }
 });
 
 app.get('/api/account/passkeys', authGuard(), (req, res) => {
@@ -5818,6 +6095,8 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     return res.status(400).json({ error: 'Email or phone number is required.' });
   }
 
+  logFlowEvent('forgot password request received', { identifier });
+
   // Always return the same response to prevent user enumeration
   const genericOk = () => res.json({ sent: true, message: 'If an account was found, a reset link has been sent.' });
 
@@ -5864,27 +6143,31 @@ app.post('/api/auth/forgot-password', async (req, res) => {
 
   if (!user || !deliveryMode) return genericOk();
 
-  // Generate a secure single-use token
-  const rawToken = crypto.randomBytes(32).toString('hex');
-  const tokenHash = hashToken(rawToken);
-  passwordResetTokens.set(tokenHash, {
-    userId: user.id,
-    expiresAt: Date.now() + RESET_TOKEN_TTL_MS,
-  });
-
-  const resetUrl = `${APP_BASE_URL}/portal-login?resetToken=${encodeURIComponent(rawToken)}`;
-
   try {
     if (deliveryMode === 'email') {
-      const subject = 'Progress Staffing Agency — Password Reset';
-      const text = `Hi ${user.name || 'there'},\n\nYou requested a password reset. Click the link below to set a new password. This link expires in 1 hour.\n\n${resetUrl}\n\nIf you did not request this, please ignore this email.`;
-      const html = `<p>Hi ${escapeHtmlText(user.name || 'there')},</p><p>You requested a password reset. Click the link below to set a new password. This link expires in 1 hour.</p><p><a href="${resetUrl}">Reset My Password</a></p><p>If you did not request this, please ignore this email.</p>`;
-      await sendPasswordResetEmail({ to: deliveryTarget, subject, text, html });
+      await sendPasswordResetEmailForUser({
+        id: user.id,
+        name: user.name,
+        email: deliveryTarget,
+      }, 'forgot_password');
     } else if (deliveryMode === 'sms') {
+      const resetRecord = createPasswordResetTokenRecord(user.id);
+      const resetUrl = `${APP_BASE_URL}/portal-login?resetToken=${encodeURIComponent(resetRecord.rawToken)}`;
+      logFlowEvent('password reset token created', {
+        userId: user.id,
+        deliveryMode,
+        tokenHash: resetRecord.tokenHash,
+        expiresAt: resetRecord.expiresAt,
+      });
       const body = `Progress Staffing: Reset your password here (expires in 1 hour): ${resetUrl}`;
       await sendSmsNotification(deliveryTarget, body);
     }
-  } catch (_error) {
+  } catch (error) {
+    logCaughtException('forgot password flow', error, {
+      userId: user.id,
+      deliveryMode,
+      deliveryTarget,
+    });
     // Don't expose delivery errors to prevent enumeration
   }
 
@@ -5898,42 +6181,106 @@ app.post('/api/auth/reset-password', (req, res) => {
   if (!rawToken) return res.status(400).json({ error: 'Reset token is required.' });
   if (!newPassword || newPassword.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters.' });
 
-  const tokenHash = hashToken(rawToken);
-  const record = passwordResetTokens.get(tokenHash);
+  try {
+    const record = consumePasswordResetTokenRecord(rawToken);
 
-  if (!record || record.expiresAt < Date.now()) {
-    passwordResetTokens.delete(tokenHash);
-    return res.status(400).json({ error: 'This reset link has expired or is invalid. Please request a new one.' });
+    if (!record) {
+      return res.status(400).json({ error: 'This reset link has expired or is invalid. Please request a new one.' });
+    }
+
+    const user = db.prepare('SELECT id, isActive FROM users WHERE id = ?').get(record.userId);
+    if (!user || !user.isActive) return res.status(404).json({ error: 'Account not found.' });
+
+    const { salt, hash } = hashPassword(newPassword);
+    db.prepare('UPDATE users SET passwordHash = ?, passwordSalt = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?').run(hash, salt, user.id);
+
+    // Invalidate all existing sessions for this user for security
+    db.prepare('DELETE FROM sessions WHERE userId = ?').run(user.id);
+
+    logFlowEvent('password reset completed', { userId: user.id });
+    return res.json({ reset: true, message: 'Password updated successfully. You can now sign in with your new password.' });
+  } catch (error) {
+    logCaughtException('reset password route', error, {
+      tokenPreview: `${rawToken.slice(0, 8)}...`,
+    });
+    return res.status(500).json({ error: 'Unable to reset password right now. Please try again.' });
   }
-
-  passwordResetTokens.delete(tokenHash); // Single-use
-
-  const user = db.prepare('SELECT id, isActive FROM users WHERE id = ?').get(record.userId);
-  if (!user || !user.isActive) return res.status(404).json({ error: 'Account not found.' });
-
-  const { salt, hash } = hashPassword(newPassword);
-  db.prepare('UPDATE users SET passwordHash = ?, passwordSalt = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?').run(hash, salt, user.id);
-
-  // Invalidate all existing sessions for this user for security
-  db.prepare('DELETE FROM sessions WHERE userId = ?').run(user.id);
-
-  return res.json({ reset: true, message: 'Password updated successfully. You can now sign in with your new password.' });
 });
 
 app.get('/api/auth/me', authGuard(), (req, res) => {
-  res.json({ user: sanitizeUser(req.auth), smtpConfigured: isEmailServiceConfigured() });
+  res.json({ user: sanitizeUser(req.auth), emailConfigured: isEmailServiceConfigured(), smtpConfigured: isEmailServiceConfigured() });
 });
 
 app.post('/api/admin/test-email', authGuard(['admin']), async (req, res) => {
   const to = String((req.body && req.body.to) || req.auth.email || '').trim().toLowerCase();
+  const subject = String((req.body && req.body.subject) || 'Progress Staffing Postmark Test Email').trim();
+  const text = String((req.body && req.body.text) || 'This is a test email sent via Postmark.').trim();
+  const htmlInput = String((req.body && req.body.html) || '').trim();
   if (!to) return res.status(400).json({ error: 'Recipient email is required.' });
+  if (!subject) return res.status(400).json({ error: 'Subject is required.' });
+
+  const html = htmlInput || `<p>${escapeHtmlText(text)}</p>`;
 
   try {
-    const result = await sendSesTestEmail(to);
+    const result = await sendPostmarkTestEmail({ to, subject, text, html });
     return res.json({ sent: true, to, result });
   } catch (error) {
-    console.error('SES test email failed:', error);
-    return res.status(500).json({ error: 'Failed to send SES test email.' });
+    logCaughtException('generic postmark test email', error, { to, subject });
+    return res.status(500).json({ error: 'Failed to send Postmark test email.' });
+  }
+});
+
+app.post('/api/admin/test-email/verification', authGuard(['admin']), async (req, res) => {
+  const email = String((req.body && req.body.email) || '').trim().toLowerCase();
+  if (!email) return res.status(400).json({ error: 'Recipient email is required.' });
+
+  const user = db
+    .prepare('SELECT id, name, email, role, isActive FROM users WHERE email = ? LIMIT 1')
+    .get(email);
+
+  if (!user || !user.isActive) {
+    return res.status(404).json({ error: 'User not found.' });
+  }
+
+  try {
+    const result = await sendAccountVerificationEmail(user, 'admin_test_route');
+    return res.json({
+      sent: true,
+      email,
+      verificationUrl: result.verificationUrl,
+      verificationExpiresAt: result.expiresAt,
+      providerResult: result.providerResult,
+    });
+  } catch (error) {
+    logCaughtException('admin verification test email route', error, { email });
+    return res.status(500).json({ error: 'Failed to send verification email.' });
+  }
+});
+
+app.post('/api/admin/test-email/password-reset', authGuard(['admin']), async (req, res) => {
+  const email = String((req.body && req.body.email) || '').trim().toLowerCase();
+  if (!email) return res.status(400).json({ error: 'Recipient email is required.' });
+
+  const user = db
+    .prepare('SELECT id, name, email, role, isActive FROM users WHERE email = ? LIMIT 1')
+    .get(email);
+
+  if (!user || !user.isActive) {
+    return res.status(404).json({ error: 'User not found.' });
+  }
+
+  try {
+    const result = await sendPasswordResetEmailForUser(user, 'admin_test_route');
+    return res.json({
+      sent: true,
+      email,
+      resetUrl: result.resetUrl,
+      resetExpiresAt: result.expiresAt,
+      providerResult: result.providerResult,
+    });
+  } catch (error) {
+    logCaughtException('admin password reset test email route', error, { email });
+    return res.status(500).json({ error: 'Failed to send password reset email.' });
   }
 });
 
@@ -12266,12 +12613,22 @@ server.listen(port, () => {
   const purgeExpiredSessions = () => {
     try {
       db.prepare("DELETE FROM sessions WHERE expiresAt <= strftime('%s', 'now')").run();
-    } catch (err) {
-      console.error('session purge failed:', err);
+    } catch (error) {
+      logCaughtException('purge expired sessions', error);
     }
   };
   purgeExpiredSessions();
   setInterval(purgeExpiredSessions, 60 * 60 * 1000);
+
+  const purgeExpiredPasswordResetTokens = () => {
+    try {
+      cleanupExpiredPasswordResetTokens();
+    } catch (error) {
+      logCaughtException('purge expired password reset tokens', error);
+    }
+  };
+  purgeExpiredPasswordResetTokens();
+  setInterval(purgeExpiredPasswordResetTokens, 15 * 60 * 1000);
 
   console.log(`Progress Staffing server running: http://localhost:${port}`);
 });

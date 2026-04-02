@@ -4391,7 +4391,7 @@ async function loadCurrentUser() {
     const res = await apiFetch('/api/auth/me', { _skipAuthRedirect: true });
     if (!res.ok) return null;
     const payload = await res.json();
-    portalSmtpConfigured = payload && payload.smtpConfigured !== false;
+    portalSmtpConfigured = payload && payload.emailConfigured !== false && payload.smtpConfigured !== false;
     return payload.user;
   } catch (_error) {
     portalSmtpConfigured = true;
@@ -4403,7 +4403,7 @@ function showSmtpStatusWarningIfNeeded() {
   if (portalSmtpConfigured) return;
   const status = document.getElementById('portalNotificationStatus');
   if (!status) return;
-  setMessage(status, 'Email delivery is not configured on this server yet (SMTP missing). Portal and push notifications still work.', 'neutral');
+  setMessage(status, 'Email delivery is not configured on this server yet (Postmark missing). Portal and push notifications still work.', 'neutral');
 }
 
 async function handlePortalLoginSubmit(event) {
@@ -4610,37 +4610,28 @@ async function handlePortalRegisterSubmit(event) {
     _skipAuthRedirect: true,
   });
 
+  const registrationData = await res.json().catch(() => ({}));
+
   if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    setMessage(msg, data.error || 'Registration failed.', 'error');
+    setMessage(msg, registrationData.error || 'Registration failed.', 'error');
     return;
   }
 
-  const loginRes = await apiFetch('/api/auth/login', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: payload.email, password: payload.password, passcode: '' }),
-    _skipAuthRedirect: true,
-  });
+  const verificationNotice = registrationData && registrationData.verificationEmailResent
+    ? 'Verification email re-sent. Redirecting to login...'
+    : 'Account created. Check your email to verify your account. Redirecting to login...';
 
-  if (!loginRes.ok) {
-    setMessage(msg, 'Account created. Redirecting to login...', 'success');
-    setTimeout(() => {
-      const loginRoute = IS_FILE_PROTOCOL ? 'portal-login.html' : '/portal-login';
-      window.location.href = loginRoute + `?email=${encodeURIComponent(payload.email)}`;
-    }, 900);
-    return;
-  }
-
-  const loginData = await loginRes.json().catch(() => ({}));
-  if (loginData && loginData.token) {
-    saveToken(loginData.token);
-  }
-
-  setMessage(msg, 'Account created. Redirecting to your portal...', 'success');
+  setMessage(msg, verificationNotice, 'success');
   setTimeout(() => {
-    window.location.href = routeForRole(payload.role);
-  }, 700);
+    const loginRoute = IS_FILE_PROTOCOL ? 'portal-login.html' : '/portal-login';
+    const params = new URLSearchParams();
+    params.set('email', payload.email);
+    params.set('verificationPending', '1');
+    if (registrationData && registrationData.verificationEmailResent) {
+      params.set('resentVerification', '1');
+    }
+    window.location.href = `${loginRoute}?${params.toString()}`;
+  }, 900);
 }
 
 async function handleLogout() {
@@ -10595,6 +10586,8 @@ async function initPortalPage() {
     const applied = params.get('applied');
     const withdrawn = params.get('withdrawn');
     const reason = params.get('reason');
+    const verificationPending = params.get('verificationPending');
+    const resentVerification = params.get('resentVerification');
     if (applied === '1') {
       const loginMsg = document.getElementById('portalLoginMessage');
       setMessage(loginMsg, 'Application received. Sign in to view it in your portal.', 'success');
@@ -10608,6 +10601,17 @@ async function initPortalPage() {
     if (reason === 'session_expired') {
       const loginMsg = document.getElementById('portalLoginMessage');
       setMessage(loginMsg, 'Your session has expired. Please sign in again.', 'error');
+    }
+
+    if (verificationPending === '1') {
+      const loginMsg = document.getElementById('portalLoginMessage');
+      setMessage(
+        loginMsg,
+        resentVerification === '1'
+          ? 'Verification email sent again. Check your inbox before signing in.'
+          : 'Account created. Check your inbox for the verification email before signing in.',
+        'success'
+      );
     }
 
     const user = await loadCurrentUser();

@@ -49,7 +49,8 @@ const ONBOARDING_PORTAL_EMAIL = 'onboarding@progressstaffingagency.com';
 const CONTRACTS_PORTAL_EMAIL = 'contracts@progressstaffingagency.com';
 const SCHEDULING_PORTAL_EMAIL = 'scheduling@progressstaffingagency.com';
 const ADMIN_SCOPES = new Set(['full', 'onboarding', 'contracts', 'scheduling']);
-const APP_BASE_URL = String(process.env.APP_BASE_URL || `http://localhost:${port}`).replace(/\/$/, '');
+const LOCAL_APP_BASE_URL = `http://localhost:${port}`;
+const APP_URL_PLACEHOLDER_BASE = 'http://app.local';
 const EMAIL_FROM = process.env.EMAIL_FROM || 'onboarding@progressstaffingagency.com';
 const EMAIL_REPLY_TO = process.env.EMAIL_REPLY_TO || 'onboarding@progressstaffingagency.com';
 const POSTMARK_SERVER_TOKEN = String(process.env.POSTMARK_SERVER_TOKEN || '').trim();
@@ -70,6 +71,98 @@ const passkeyChallenges = new Map();
 const passkeyActionProofs = new Map();
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
 const EMAIL_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000;
+
+function isProductionDeployment() {
+  const nodeEnv = String(process.env.NODE_ENV || '').trim().toLowerCase();
+  const renderFlag = String(process.env.RENDER || '').trim().toLowerCase();
+  return nodeEnv === 'production' || renderFlag === 'true';
+}
+
+function normalizeBaseUrl(rawValue, source) {
+  const value = String(rawValue || '').trim();
+  if (!value) return null;
+
+  try {
+    const url = new URL(value);
+    if (!/^https?:$/.test(url.protocol)) {
+      throw new Error('Base URL must use http or https.');
+    }
+    url.pathname = '/';
+    url.search = '';
+    url.hash = '';
+    return url.toString().replace(/\/$/, '');
+  } catch (error) {
+    console.error('[startup] Invalid application base URL configuration.', {
+      source,
+      rawValue: value,
+      error: error.message,
+    });
+    return null;
+  }
+}
+
+function resolveAppBaseUrlConfig() {
+  const candidates = [
+    ['APP_BASE_URL', process.env.APP_BASE_URL],
+    ['PUBLIC_APP_URL', process.env.PUBLIC_APP_URL],
+  ];
+
+  for (const [source, rawValue] of candidates) {
+    const baseUrl = normalizeBaseUrl(rawValue, source);
+    if (!baseUrl) continue;
+
+    return {
+      baseUrl,
+      source,
+      usedFallback: false,
+      environment: isProductionDeployment() ? 'production' : 'development',
+    };
+  }
+
+  if (!isProductionDeployment()) {
+    const fallbackBaseUrl = normalizeBaseUrl(LOCAL_APP_BASE_URL, 'development-fallback');
+    return {
+      baseUrl: fallbackBaseUrl,
+      source: 'development-fallback',
+      usedFallback: true,
+      environment: 'development',
+    };
+  }
+
+  return {
+    baseUrl: null,
+    source: null,
+    usedFallback: false,
+    environment: 'production',
+  };
+}
+
+const APP_URL_CONFIG = resolveAppBaseUrlConfig();
+const APP_BASE_URL = APP_URL_CONFIG.baseUrl;
+
+function validateAppBaseUrlConfiguration() {
+  if (APP_BASE_URL) {
+    console.info('[startup] Application base URL selected.', {
+      environment: APP_URL_CONFIG.environment,
+      source: APP_URL_CONFIG.source,
+      baseUrl: APP_BASE_URL,
+      usedFallback: APP_URL_CONFIG.usedFallback,
+    });
+    if (APP_URL_CONFIG.usedFallback) {
+      console.warn('[startup] Application base URL is using the local development fallback.', {
+        baseUrl: APP_BASE_URL,
+        checkedEnvVars: ['APP_BASE_URL', 'PUBLIC_APP_URL'],
+      });
+    }
+    return;
+  }
+
+  console.error('[startup] Missing application base URL configuration.', {
+    environment: APP_URL_CONFIG.environment,
+    checkedEnvVars: ['APP_BASE_URL', 'PUBLIC_APP_URL'],
+    message: 'Set APP_BASE_URL or PUBLIC_APP_URL to generate absolute links for emails and portal notifications.',
+  });
+}
 
 function getMissingEmailEnvVars() {
   return [
@@ -110,6 +203,38 @@ function logCaughtException(context, error, details = {}) {
 }
 
 validateEmailEnvironment();
+validateAppBaseUrlConfiguration();
+
+function requireAppBaseUrl(context) {
+  if (APP_BASE_URL) return APP_BASE_URL;
+
+  const error = new Error('APP_BASE_URL or PUBLIC_APP_URL must be configured before generating absolute application URLs.');
+  logCaughtException(`app base url unavailable: ${context}`, error, {
+    environment: APP_URL_CONFIG.environment,
+    checkedEnvVars: ['APP_BASE_URL', 'PUBLIC_APP_URL'],
+    usedFallback: APP_URL_CONFIG.usedFallback,
+  });
+  throw error;
+}
+
+function buildAppUrl(relativePath, params = {}, context = 'app-url') {
+  const baseUrl = requireAppBaseUrl(context);
+  const url = new URL(relativePath.startsWith('/') ? relativePath : `/${relativePath}`, `${baseUrl}/`);
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === '') return;
+    url.searchParams.set(key, String(value));
+  });
+
+  const absoluteUrl = url.toString();
+  logFlowEvent('app URL generated', {
+    context,
+    baseUrl,
+    source: APP_URL_CONFIG.source,
+    usedFallback: APP_URL_CONFIG.usedFallback,
+    absoluteUrl,
+  });
+  return absoluteUrl;
+}
 
 function resolvePasskeyRpId() {
   if (process.env.WEBAUTHN_RP_ID) {
@@ -117,14 +242,14 @@ function resolvePasskeyRpId() {
   }
 
   try {
-    return new URL(APP_BASE_URL).hostname;
+    return new URL(process.env.WEBAUTHN_ORIGIN || APP_BASE_URL || LOCAL_APP_BASE_URL).hostname;
   } catch (_error) {
     return 'localhost';
   }
 }
 
 const PASSKEY_RP_ID = resolvePasskeyRpId();
-const PASSKEY_ORIGIN = String(process.env.WEBAUTHN_ORIGIN || APP_BASE_URL).replace(/\/$/, '');
+const PASSKEY_ORIGIN = normalizeBaseUrl(process.env.WEBAUTHN_ORIGIN || APP_BASE_URL || LOCAL_APP_BASE_URL, 'passkey-origin');
 const PASSKEY_ALLOWED_ORIGINS = new Set(
   [
     PASSKEY_ORIGIN,
@@ -1113,13 +1238,18 @@ function buildVerificationEmailPayload(user, verificationUrl) {
 
 async function sendAccountVerificationEmail(user, reason = 'registration') {
   const verification = createEmailVerificationTokenRecord(user.id);
-  const verificationUrl = `${APP_BASE_URL}/api/verify-email?token=${encodeURIComponent(verification.rawToken)}`;
+  const verificationUrl = buildAppUrl('/api/verify-email', {
+    token: verification.rawToken,
+  }, 'verification-email');
   const emailPayload = buildVerificationEmailPayload(user, verificationUrl);
 
   logFlowEvent('verification URL generated', {
     userId: user.id,
     email: user.email,
     reason,
+    selectedBaseUrl: APP_BASE_URL,
+    baseUrlSource: APP_URL_CONFIG.source,
+    usedFallback: APP_URL_CONFIG.usedFallback,
     verificationUrl,
     expiresAt: verification.expiresAt,
   });
@@ -1151,13 +1281,18 @@ function buildPasswordResetEmailPayload(user, resetUrl) {
 
 async function sendPasswordResetEmailForUser(user, reason = 'forgot_password') {
   const resetRecord = createPasswordResetTokenRecord(user.id);
-  const resetUrl = `${APP_BASE_URL}/portal-login?resetToken=${encodeURIComponent(resetRecord.rawToken)}`;
+  const resetUrl = buildAppUrl('/portal-login', {
+    resetToken: resetRecord.rawToken,
+  }, 'password-reset-email');
   const emailPayload = buildPasswordResetEmailPayload(user, resetUrl);
 
   logFlowEvent('password reset email attempted', {
     userId: user.id,
     email: user.email,
     reason,
+    selectedBaseUrl: APP_BASE_URL,
+    baseUrlSource: APP_URL_CONFIG.source,
+    usedFallback: APP_URL_CONFIG.usedFallback,
     resetUrl,
     expiresAt: resetRecord.expiresAt,
   });
@@ -1356,8 +1491,7 @@ async function resolveJobsiteGeofenceCoordinates(jobsiteUserId) {
 }
 
 function absolutePortalUrl(relativePath) {
-  if (!relativePath) return APP_BASE_URL;
-  return `${APP_BASE_URL}${relativePath.startsWith('/') ? relativePath : `/${relativePath}`}`;
+  return buildAppUrl(relativePath || '/', {}, 'absolute-portal-url');
 }
 
 function runAsyncTask(label, taskFactory) {
@@ -1369,7 +1503,7 @@ function runAsyncTask(label, taskFactory) {
 }
 
 function buildPortalPath(relativePath, params = {}) {
-  const url = new URL(relativePath.startsWith('/') ? relativePath : `/${relativePath}`, APP_BASE_URL);
+  const url = new URL(relativePath.startsWith('/') ? relativePath : `/${relativePath}`, APP_URL_PLACEHOLDER_BASE);
   Object.entries(params).forEach(([key, value]) => {
     if (value === undefined || value === null || value === '') return;
     url.searchParams.set(key, String(value));
@@ -6152,10 +6286,16 @@ app.post('/api/auth/forgot-password', async (req, res) => {
       }, 'forgot_password');
     } else if (deliveryMode === 'sms') {
       const resetRecord = createPasswordResetTokenRecord(user.id);
-      const resetUrl = `${APP_BASE_URL}/portal-login?resetToken=${encodeURIComponent(resetRecord.rawToken)}`;
+      const resetUrl = buildAppUrl('/portal-login', {
+        resetToken: resetRecord.rawToken,
+      }, 'password-reset-sms');
       logFlowEvent('password reset token created', {
         userId: user.id,
         deliveryMode,
+        selectedBaseUrl: APP_BASE_URL,
+        baseUrlSource: APP_URL_CONFIG.source,
+        usedFallback: APP_URL_CONFIG.usedFallback,
+        resetUrl,
         tokenHash: resetRecord.tokenHash,
         expiresAt: resetRecord.expiresAt,
       });
@@ -12630,5 +12770,11 @@ server.listen(port, () => {
   purgeExpiredPasswordResetTokens();
   setInterval(purgeExpiredPasswordResetTokens, 15 * 60 * 1000);
 
-  console.log(`Progress Staffing server running: http://localhost:${port}`);
+  console.log('Progress Staffing server running.', {
+    port,
+    environment: APP_URL_CONFIG.environment,
+    appBaseUrl: APP_BASE_URL,
+    appBaseUrlSource: APP_URL_CONFIG.source,
+    usedAppBaseUrlFallback: APP_URL_CONFIG.usedFallback,
+  });
 });

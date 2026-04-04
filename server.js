@@ -4348,7 +4348,6 @@ ensureColumn('users', 'emailVerificationExpiresAt', 'INTEGER');
 ensureColumn('users', 'portalScope', "TEXT NOT NULL DEFAULT 'full'");
 ensureColumn('users', 'requireBiometricSensitive', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('users', 'adminEmployeeIndustryTrack', "TEXT DEFAULT NULL");
-ensureColumn('users', 'updatedAt', 'DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP');
 db.prepare("UPDATE users SET portalScope = 'full' WHERE portalScope IS NULL OR TRIM(portalScope) = ''").run();
 db.prepare("UPDATE users SET isVerified = 1 WHERE role = 'admin' AND (isVerified IS NULL OR isVerified = 0)").run();
 ensureColumn('employee_profiles', 'address', 'TEXT');

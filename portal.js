@@ -10694,6 +10694,7 @@ async function initPortalPage() {
         e.preventDefault();
         const msg = document.getElementById('resetPasswordMessage');
         const tokenField = document.getElementById('resetToken');
+        const resetToken = String(tokenField ? tokenField.value : '').trim();
         const newPassword = String(resetForm.newPassword ? resetForm.newPassword.value : '');
         const confirmPassword = String(resetForm.confirmPassword ? resetForm.confirmPassword.value : '');
         const btn = resetForm.querySelector('[type="submit"]');
@@ -10708,20 +10709,35 @@ async function initPortalPage() {
         if (btn) btn.disabled = true;
         setMessage(msg, 'Updating password...', 'neutral');
         try {
+          console.info('[reset-password] submit started', {
+            hasToken: Boolean(resetToken),
+            tokenPreview: resetToken ? `${resetToken.slice(0, 8)}...` : null,
+            passwordLength: newPassword.length,
+          });
           const res = await apiFetch('/api/auth/reset-password', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ token: tokenField ? tokenField.value : '', newPassword }),
+            body: JSON.stringify({ token: resetToken, newPassword }),
             _skipAuthRedirect: true,
           });
           const payload = await res.json().catch(() => ({}));
+          console.info('[reset-password] submit response', {
+            status: res.status,
+            ok: res.ok,
+            payload,
+          });
           if (!res.ok) {
             setMessage(msg, payload.error || 'Unable to reset password. The link may have expired.', 'error');
           } else {
             setMessage(msg, 'Password updated successfully! Redirecting to sign in...', 'success');
             setTimeout(() => { window.location.href = '/portal-login'; }, 2000);
           }
-        } catch (_err) {
+        } catch (error) {
+          console.error('[reset-password] submit failed', {
+            message: error && error.message ? error.message : String(error),
+            hasToken: Boolean(resetToken),
+            tokenPreview: resetToken ? `${resetToken.slice(0, 8)}...` : null,
+          });
           setMessage(msg, 'Unable to reset password. Please check your connection and try again.', 'error');
         } finally {
           if (btn) btn.disabled = false;

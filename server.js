@@ -1173,6 +1173,12 @@ function hashToken(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
 
+function previewToken(token) {
+  const normalized = String(token || '').trim();
+  if (!normalized) return null;
+  return `${normalized.slice(0, 8)}...`;
+}
+
 function cleanupExpiredPasswordResetTokens() {
   return db.prepare('DELETE FROM password_reset_tokens WHERE expiresAt <= ?').run(Date.now());
 }
@@ -1209,6 +1215,21 @@ function consumePasswordResetTokenRecord(rawToken) {
 
   db.prepare('DELETE FROM password_reset_tokens WHERE id = ?').run(record.id);
   return record;
+}
+
+function getPasswordResetTokenRecord(rawToken) {
+  const tokenHash = hashToken(rawToken);
+  return db
+    .prepare('SELECT id, userId, expiresAt FROM password_reset_tokens WHERE tokenHash = ? LIMIT 1')
+    .get(tokenHash);
+}
+
+function invalidatePasswordResetTokenById(tokenId) {
+  return db.prepare('DELETE FROM password_reset_tokens WHERE id = ?').run(tokenId);
+}
+
+function invalidatePasswordResetTokenByHash(tokenHash) {
+  return db.prepare('DELETE FROM password_reset_tokens WHERE tokenHash = ?').run(tokenHash);
 }
 
 function createEmailVerificationTokenRecord(userId) {
@@ -4327,6 +4348,7 @@ ensureColumn('users', 'emailVerificationExpiresAt', 'INTEGER');
 ensureColumn('users', 'portalScope', "TEXT NOT NULL DEFAULT 'full'");
 ensureColumn('users', 'requireBiometricSensitive', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('users', 'adminEmployeeIndustryTrack', "TEXT DEFAULT NULL");
+ensureColumn('users', 'updatedAt', 'DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP');
 db.prepare("UPDATE users SET portalScope = 'full' WHERE portalScope IS NULL OR TRIM(portalScope) = ''").run();
 db.prepare("UPDATE users SET isVerified = 1 WHERE role = 'admin' AND (isVerified IS NULL OR isVerified = 0)").run();
 ensureColumn('employee_profiles', 'address', 'TEXT');
@@ -6318,30 +6340,162 @@ app.post('/api/auth/reset-password', (req, res) => {
   const rawToken = String(req.body && req.body.token || '').trim();
   const newPassword = String(req.body && req.body.newPassword || '');
 
-  if (!rawToken) return res.status(400).json({ error: 'Reset token is required.' });
-  if (!newPassword || newPassword.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+  logFlowEvent('reset password submit received', {
+    hasToken: Boolean(rawToken),
+    tokenPreview: previewToken(rawToken),
+    passwordLength: newPassword.length,
+  });
+
+  logFlowEvent('reset password token received', {
+    tokenPreview: previewToken(rawToken),
+  });
+
+  if (!rawToken) {
+    logFlowEvent('reset password response returned', {
+      statusCode: 400,
+      reason: 'missing-token',
+    });
+    return res.status(400).json({ error: 'Reset token is required.' });
+  }
+
+  const passwordValid = Boolean(newPassword) && newPassword.length >= 8;
+  logFlowEvent('reset password validation result', {
+    tokenPreview: previewToken(rawToken),
+    passwordValid,
+    passwordLength: newPassword.length,
+  });
+
+  if (!passwordValid) {
+    logFlowEvent('reset password response returned', {
+      statusCode: 400,
+      reason: 'password-validation-failed',
+      tokenPreview: previewToken(rawToken),
+    });
+    return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+  }
 
   try {
-    const record = consumePasswordResetTokenRecord(rawToken);
+    const tokenHash = hashToken(rawToken);
+    const record = getPasswordResetTokenRecord(rawToken);
 
-    if (!record) {
+    logFlowEvent('reset password token lookup result', {
+      tokenPreview: previewToken(rawToken),
+      tokenHash,
+      found: Boolean(record),
+      tokenId: record ? record.id : null,
+      userId: record ? record.userId : null,
+      expiresAt: record ? record.expiresAt : null,
+    });
+
+    const now = Date.now();
+    const isExpired = !record || Number(record.expiresAt || 0) < now;
+
+    logFlowEvent('reset password token expiry check', {
+      tokenPreview: previewToken(rawToken),
+      found: Boolean(record),
+      expiresAt: record ? record.expiresAt : null,
+      checkedAt: now,
+      expired: isExpired,
+    });
+
+    if (!record || isExpired) {
+      const cleanupResult = invalidatePasswordResetTokenByHash(tokenHash);
+      logFlowEvent('reset password token invalidation/cleanup', {
+        tokenPreview: previewToken(rawToken),
+        reason: record ? 'expired' : 'not-found',
+        deletedCount: cleanupResult.changes,
+      });
+      logFlowEvent('reset password response returned', {
+        statusCode: 400,
+        reason: record ? 'expired-token' : 'invalid-token',
+        tokenPreview: previewToken(rawToken),
+      });
       return res.status(400).json({ error: 'This reset link has expired or is invalid. Please request a new one.' });
     }
 
-    const user = db.prepare('SELECT id, isActive FROM users WHERE id = ?').get(record.userId);
-    if (!user || !user.isActive) return res.status(404).json({ error: 'Account not found.' });
+    const user = db.prepare('SELECT id, email, isActive FROM users WHERE id = ?').get(record.userId);
+    logFlowEvent('reset password user lookup result', {
+      tokenPreview: previewToken(rawToken),
+      userId: record.userId,
+      found: Boolean(user),
+      isActive: user ? Boolean(user.isActive) : false,
+      email: user ? user.email : null,
+    });
 
+    if (!user || !user.isActive) {
+      logFlowEvent('reset password response returned', {
+        statusCode: 404,
+        reason: 'user-not-found-or-inactive',
+        tokenPreview: previewToken(rawToken),
+        userId: record.userId,
+      });
+      return res.status(404).json({ error: 'Account not found.' });
+    }
+
+    logFlowEvent('reset password hashing started', {
+      tokenPreview: previewToken(rawToken),
+      userId: user.id,
+    });
     const { salt, hash } = hashPassword(newPassword);
-    db.prepare('UPDATE users SET passwordHash = ?, passwordSalt = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?').run(hash, salt, user.id);
+    logFlowEvent('reset password hashing completed', {
+      tokenPreview: previewToken(rawToken),
+      userId: user.id,
+      saltLength: salt.length,
+      hashLength: hash.length,
+    });
 
-    // Invalidate all existing sessions for this user for security
-    db.prepare('DELETE FROM sessions WHERE userId = ?').run(user.id);
+    logFlowEvent('reset password database update attempted', {
+      tokenPreview: previewToken(rawToken),
+      userId: user.id,
+    });
+
+    const applyPasswordReset = db.transaction(() => {
+      const updateResult = db.prepare('UPDATE users SET passwordHash = ?, passwordSalt = ? WHERE id = ?').run(hash, salt, user.id);
+      if (updateResult.changes < 1) {
+        throw new Error(`Password reset database update affected ${updateResult.changes} rows for user ${user.id}.`);
+      }
+      const sessionCleanupResult = db.prepare('DELETE FROM sessions WHERE userId = ?').run(user.id);
+      const tokenCleanupResult = invalidatePasswordResetTokenById(record.id);
+      return {
+        updateResult,
+        sessionCleanupResult,
+        tokenCleanupResult,
+      };
+    });
+
+    const resetResult = applyPasswordReset();
+
+    logFlowEvent('reset password database update result', {
+      tokenPreview: previewToken(rawToken),
+      userId: user.id,
+      updatedRows: resetResult.updateResult.changes,
+      sessionRowsDeleted: resetResult.sessionCleanupResult.changes,
+    });
+
+    logFlowEvent('reset password token invalidation/cleanup', {
+      tokenPreview: previewToken(rawToken),
+      reason: 'reset-complete',
+      deletedCount: resetResult.tokenCleanupResult.changes,
+      tokenId: record.id,
+    });
 
     logFlowEvent('password reset completed', { userId: user.id });
+    logFlowEvent('reset password response returned', {
+      statusCode: 200,
+      reason: 'success',
+      tokenPreview: previewToken(rawToken),
+      userId: user.id,
+    });
     return res.json({ reset: true, message: 'Password updated successfully. You can now sign in with your new password.' });
   } catch (error) {
     logCaughtException('reset password route', error, {
-      tokenPreview: `${rawToken.slice(0, 8)}...`,
+      tokenPreview: previewToken(rawToken),
+      passwordLength: newPassword.length,
+    });
+    logFlowEvent('reset password response returned', {
+      statusCode: 500,
+      reason: 'exception',
+      tokenPreview: previewToken(rawToken),
     });
     return res.status(500).json({ error: 'Unable to reset password right now. Please try again.' });
   }

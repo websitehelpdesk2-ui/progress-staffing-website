@@ -197,6 +197,80 @@ function formatIndustryDisplay(industry) {
   return formatIndustryTrackLabel(track);
 }
 
+function formatEmployeeIndustryTypeLabel(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (!normalized) return '';
+  if (normalized === 'warehouse') return 'Warehouse';
+  if (normalized === 'healthcare') return 'Healthcare';
+  if (normalized === 'cna') return 'CNA';
+  if (normalized === 'cma') return 'CMA';
+  if (normalized === 'rn') return 'RN';
+  if (normalized === 'lpn') return 'LPN';
+  if (normalized === 'lvn') return 'LVN';
+  if (normalized === 'dietary') return 'Dietary';
+  return String(value)
+    .trim()
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function resolveEmployeeHeaderData(source = {}) {
+  const employee = source.employee || {};
+  const profile = source.profile || {};
+  const applications = Array.isArray(source.applications) ? source.applications : [];
+  const latestApplication = applications[0] || {};
+  const industryType = String(
+    source.industryType || employee.industryType || profile.industryType || latestApplication.industry || ''
+  ).trim();
+  const positionTitle = String(
+    source.positionTitle || employee.positionTitle || profile.positionTitle || latestApplication.position || ''
+  ).trim();
+  const industryTrack = String(
+    source.industryTrack || employee.industryTrack || profile.industryTrack || source.compliance?.track || industryToTrack(industryType)
+  ).trim().toLowerCase();
+
+  return {
+    industryType,
+    positionTitle,
+    industryTrack,
+    hasWarehouseContext: industryTrack === 'warehouse',
+  };
+}
+
+function renderEmployeeHeaderComponent(source = {}, options = {}) {
+  const header = resolveEmployeeHeaderData(source);
+  const badges = [];
+  const industryLabel = formatEmployeeIndustryTypeLabel(header.industryType || header.industryTrack);
+
+  if (header.hasWarehouseContext && industryLabel && industryLabel.toLowerCase() !== 'warehouse') {
+    badges.push('<span class="badge badge--green">Warehouse</span>');
+  }
+
+  if (industryLabel) {
+    badges.push(`<span class="badge badge--blue">${escapeHtml(industryLabel)}</span>`);
+  }
+
+  const titleMarkup = header.positionTitle
+    ? `<span class="employee-header__title">${escapeHtml(header.positionTitle)}</span>`
+    : '';
+
+  if (!badges.length && !titleMarkup) {
+    return '';
+  }
+
+  const classNames = ['employee-header'];
+  if (options.surface) classNames.push('employee-header--surface');
+
+  return `<div class="${classNames.join(' ')}">${badges.join('')}${titleMarkup}</div>`;
+}
+
+function renderEmployeeHeaderInto(element, source = {}, options = {}) {
+  if (!element) return;
+  const markup = renderEmployeeHeaderComponent(source, options);
+  element.innerHTML = markup;
+  element.hidden = !markup;
+}
+
 function normalizeIndustryTrack(value) {
   const normalized = String(value || '').trim().toLowerCase();
   if (normalized === 'healthcare') return 'healthcare';
@@ -4655,8 +4729,7 @@ function renderEmployeeDashboard(data) {
   
   const industry = document.getElementById('portalIndustry');
   if (industry) {
-    const industryTrack = inferPrimaryIndustry(data.applications || []) || String(data.profile?.industryTrack || '').trim();
-    industry.textContent = formatIndustryDisplay(industryTrack);
+    renderEmployeeHeaderInto(industry, data);
   }
 
   populateAccountIdentityFields(data.user);
@@ -4677,14 +4750,15 @@ function renderEmployeeDashboard(data) {
   // Profile
   const profile = document.getElementById('employeeProfile');
   if (profile) {
-    const latestApp = (data.applications || [])[0] || {};
+    const headerData = resolveEmployeeHeaderData(data);
     const backgroundStatusText = formatBackgroundStatus(data?.profile?.backgroundStatus);
     const bgDisplay = data.hasAdminBackgroundDocument
       ? backgroundStatusBadge(data.profile.backgroundStatus)
       : '<span class="badge badge--gray">Waiting for admin-uploaded background</span>';
     profile.innerHTML = `
+      ${renderEmployeeHeaderComponent(data, { surface: true })}
       <div class="profile-info__item"><span class="profile-info__label">Email</span><span>${escapeHtml(data.user.email)}</span></div>
-      <div class="profile-info__item"><span class="profile-info__label">Position</span><span>${escapeHtml(latestApp.position || 'Not set')}</span></div>
+      <div class="profile-info__item"><span class="profile-info__label">Position</span><span>${escapeHtml(headerData.positionTitle || 'Not set')}</span></div>
       <div class="profile-info__item"><span class="profile-info__label">Background Check</span><span>${bgDisplay}${data.hasAdminBackgroundDocument ? `<span style="display:block;margin-top:0.3rem;color:var(--color-muted);font-size:0.82rem;">Status: ${escapeHtml(backgroundStatusText)}</span>` : ''}</span></div>
       <div class="profile-info__item"><span class="profile-info__label">Phone</span><span>${escapeHtml(formatPhoneForView(data.profile.phone))}</span></div>
       <div class="profile-info__item"><span class="profile-info__label">Address</span><span>${escapeHtml([data.profile.address, data.profile.city, data.profile.state, data.profile.zip].filter(Boolean).join(', ') || 'Not set')}</span></div>
@@ -5244,23 +5318,14 @@ function renderAdminEmployeeDetail(data) {
 
     const employee = data.employee || {};
     const compliance = data.compliance || {};
-    const track = compliance.track === 'healthcare' ? 'Healthcare' : 'Warehouse';
     const profileComplete = compliance.isComplete ? 'Complete' : 'Incomplete';
     const onboardingStatus = data.onboardingStatus || (employee.isActive ? 'registered' : 'inactive');
-
-    const position = (data.applications && data.applications[0] && data.applications[0].position) || 'N/A';
 
     if (title) title.textContent = `Employee Profile: ${employee.name || 'Unknown Employee'}`;
     if (msg) hideMessage(msg);
 
   profileEl.innerHTML = `
-    <div style="margin-bottom:1rem;padding:0.9rem 1rem;background:rgba(56,189,248,0.06);border:1px solid rgba(56,189,248,0.18);border-radius:10px;display:flex;gap:1.5rem;flex-wrap:wrap;align-items:center;">
-      <div><span style="font-size:1.1rem;font-weight:700;color:var(--color-primary)">${escapeHtml(employee.name || 'N/A')}</span></div>
-      <div style="display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;">
-        <span class="badge badge--blue" style="font-size:0.85rem;padding:0.25rem 0.7rem;">${escapeHtml(track)} Worker</span>
-        <span style="color:var(--color-muted);font-size:0.9rem;">${escapeHtml(position)}</span>
-      </div>
-    </div>
+    ${renderEmployeeHeaderComponent(data, { surface: true })}
     <div class="profile-info__item"><span class="profile-info__label">Email</span><span>${escapeHtml(employee.email || 'N/A')}</span></div>
     <div class="profile-info__item"><span class="profile-info__label">Phone</span><span>${escapeHtml(formatPhoneForView(employee.phone, 'N/A'))}</span></div>
     <div class="profile-info__item"><span class="profile-info__label">Address</span><span>${escapeHtml([employee.address, employee.city, employee.state, employee.zip].filter(Boolean).join(', ') || 'N/A')}</span></div>
@@ -7552,6 +7617,7 @@ async function loadOnboardingEmployeeProfile(employeeId) {
 
   if (profileWrap) {
     profileWrap.innerHTML = `
+      ${renderEmployeeHeaderComponent(payload, { surface: true })}
       <p><strong>Name:</strong> ${escapeHtml(employee.name || '—')}</p>
       <p><strong>Email:</strong> ${escapeHtml(employee.email || '—')}</p>
       <p><strong>Phone:</strong> ${escapeHtml(formatPhoneForView(employee.phone))}</p>

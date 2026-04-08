@@ -748,6 +748,38 @@ a {
   white-space: nowrap;
 }
 
+.portal-welcome__employee-header {
+  min-height: 1.75rem;
+}
+
+.employee-header {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  flex-wrap: nowrap;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.employee-header--surface {
+  margin-bottom: 1rem;
+  padding: 0.9rem 1rem;
+  background: rgba(56, 189, 248, 0.06);
+  border: 1px solid rgba(56, 189, 248, 0.18);
+  border-radius: 10px;
+  overflow-x: auto;
+}
+
+.employee-header__title {
+  color: var(--color-primary);
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.employee-header--surface .employee-header__title {
+  font-size: 1rem;
+}
+
 /* ── Stat cards row ────────────────────────────────────── */
 .stat-row {
   display: grid;
@@ -2109,6 +2141,15 @@ a {
 .portal-page.theme-dark .badge--gray,
 .portal-page.theme-dark .badge--blue {
   color: rgba(240, 248, 243, 0.98);
+}
+
+.portal-page.theme-dark .employee-header--surface {
+  background: rgba(56, 189, 248, 0.12);
+  border-color: rgba(125, 211, 252, 0.24);
+}
+
+.portal-page.theme-dark .employee-header__title {
+  color: rgba(240, 246, 241, 0.96);
 }
 
 .portal-page.theme-dark .portal-widget-tile {

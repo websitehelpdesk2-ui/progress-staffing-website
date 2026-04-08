@@ -2932,6 +2932,54 @@ function inferIndustryFromApplications(applications = []) {
   return String(applications[0].industry || 'warehouse').toLowerCase();
 }
 
+function normalizeEmployeeIndustryType(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function buildEmployeeProfileHeaderData(userId, email, options = {}) {
+  const applications = Array.isArray(options.applications)
+    ? options.applications
+    : db
+      .prepare(
+        `SELECT id, industry, position, createdAt
+         FROM applications
+         WHERE userId = ? OR email = ?
+         ORDER BY createdAt DESC`
+      )
+      .all(userId, email);
+  const latestApplication = applications[0] || {};
+  const profile = options.profile || db.prepare('SELECT industryType, positionTitle FROM employee_profiles WHERE userId = ?').get(userId) || {};
+
+  const industryType = normalizeEmployeeIndustryType(latestApplication.industry || profile.industryType);
+  const positionTitle = String(latestApplication.position || profile.positionTitle || '').trim();
+  const profileIndustryType = normalizeEmployeeIndustryType(profile.industryType);
+  const profilePositionTitle = String(profile.positionTitle || '').trim();
+
+  if (industryType || positionTitle) {
+    const shouldPersist = industryType !== profileIndustryType || positionTitle !== profilePositionTitle;
+    if (shouldPersist) {
+      db.prepare(
+        `INSERT INTO employee_profiles (userId, industryType, positionTitle)
+         VALUES (?, ?, ?)
+         ON CONFLICT(userId) DO UPDATE SET
+           industryType = excluded.industryType,
+           positionTitle = excluded.positionTitle`
+      ).run(userId, industryType || null, positionTitle || null);
+    }
+  }
+
+  if (options.profile) {
+    options.profile.industryType = industryType || profileIndustryType || null;
+    options.profile.positionTitle = positionTitle || profilePositionTitle || null;
+  }
+
+  return {
+    industryType: industryType || profileIndustryType || null,
+    positionTitle: positionTitle || profilePositionTitle || null,
+    industryTrack: industryToTrack(industryType || profileIndustryType || inferIndustryFromApplications(applications)),
+  };
+}
+
 function normalizeIndustryTrack(value) {
   const normalized = String(value || '').trim().toLowerCase();
   if (normalized === 'healthcare') return 'healthcare';
@@ -4356,6 +4404,8 @@ ensureColumn('employee_profiles', 'state', 'TEXT');
 ensureColumn('employee_profiles', 'zip', 'TEXT');
 ensureColumn('employee_profiles', 'backgroundStatus', 'TEXT');
 ensureColumn('employee_profiles', 'ssnEncrypted', 'TEXT');
+ensureColumn('employee_profiles', 'industryType', 'TEXT');
+ensureColumn('employee_profiles', 'positionTitle', 'TEXT');
 ensureColumn('jobsite_profiles', 'industryTrack', 'TEXT');
 ensureColumn('jobsite_profiles', 'geofenceLatitude', 'REAL');
 ensureColumn('jobsite_profiles', 'geofenceLongitude', 'REAL');
@@ -4375,6 +4425,13 @@ ensureColumn('employee_time_clock_entries', 'geofenceDistanceFeet', 'REAL');
 ensureColumn('employee_time_clock_entries', 'timesheetId', 'INTEGER');
 ensureColumn('timesheets', 'source', 'TEXT');
 ensureColumn('timesheets', 'paperOriginalName', 'TEXT');
+
+(function backfillEmployeeProfileHeaderFields() {
+  const employees = db.prepare("SELECT id, email FROM users WHERE role = 'employee'").all();
+  employees.forEach((employee) => {
+    buildEmployeeProfileHeaderData(employee.id, employee.email);
+  });
+})();
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS employee_excuse_forms (
@@ -4869,11 +4926,15 @@ app.get('/api/portal/onboarding/employees', authGuard(['admin', 'onboarding']), 
       const { compliance } = evaluateEmployeeCompliance(employee.id, industry, documents);
       const onboardingStatus = computeEmployeeOnboardingStatus(employee.isActive, compliance, employee.backgroundStatus);
       const latestApp = applications[0] || {};
+      const headerData = buildEmployeeProfileHeaderData(employee.id, employee.email, { applications, profile: employee });
 
       return {
         ...employee,
         industry: track,
         position: latestApp.position || null,
+        industryType: headerData.industryType,
+        positionTitle: headerData.positionTitle,
+        industryTrack: headerData.industryTrack,
         onboardingStatus,
         complianceComplete: Boolean(compliance.isComplete),
       };
@@ -4939,6 +5000,7 @@ app.get('/api/portal/onboarding/employees/:id/profile', authGuard(['admin', 'onb
 
   const industry = inferIndustryFromApplications(applications);
   const track = industryToTrack(industry);
+  const headerData = buildEmployeeProfileHeaderData(employee.id, employee.email, { applications, profile: employee });
 
   // Check if admin has permission to view this employee (for scoped admins)
   if (req.auth.role === 'admin' && !canAdminViewEmployee(req.auth, employeeId, track)) {
@@ -5009,10 +5071,18 @@ app.get('/api/portal/onboarding/employees/:id/profile', authGuard(['admin', 'onb
       .get(employeeId) || null;
 
   return res.json({
-    employee,
+    employee: {
+      ...employee,
+      industryType: headerData.industryType,
+      positionTitle: headerData.positionTitle,
+      industryTrack: headerData.industryTrack,
+    },
     applications,
     documents,
     compliance,
+    industryType: headerData.industryType,
+    positionTitle: headerData.positionTitle,
+    industryTrack: headerData.industryTrack,
     onboardingStatus,
     ssnOnFile: Boolean(ssnRow && ssnRow.ssnEncrypted),
     w4Form,
@@ -5663,6 +5733,8 @@ app.post('/api/auth/register', async (req, res) => {
           isTruthy(certifyAgreement) ? 1 : 0
         );
       }
+
+      buildEmployeeProfileHeaderData(userId, normalizedEmail);
     }
 
     if (normalizedRole === 'jobsite') {
@@ -6779,6 +6851,7 @@ app.get('/api/portal/employee/dashboard', authGuard(['employee']), (req, res) =>
     }));
 
   const industry = inferIndustryFromApplications(applications);
+  const headerData = buildEmployeeProfileHeaderData(req.auth.id, req.auth.email, { applications, profile });
   const { compliance, backgroundConsentForm, hipaaComplianceForm, handbookForm, compensationAgreementForm } = evaluateEmployeeCompliance(req.auth.id, industry, documents);
   const onboardingStatus = computeEmployeeOnboardingStatus(req.auth.isActive, compliance, profile.backgroundStatus);
 
@@ -6851,6 +6924,9 @@ app.get('/api/portal/employee/dashboard', authGuard(['employee']), (req, res) =>
     applications,
     documents,
     compliance,
+    industryType: headerData.industryType,
+    positionTitle: headerData.positionTitle,
+    industryTrack: headerData.industryTrack,
     onboardingStatus,
     hasAdminBackgroundDocument: Boolean(hasAdminBackgroundDocument),
     ssnOnFile: Boolean(profile && profile.ssnEncrypted),
@@ -11893,6 +11969,8 @@ app.post('/api/apply', (req, res) => {
     message ? String(message).trim() : null,
     1
   );
+
+  buildEmployeeProfileHeaderData(employeeUserId, normalizedEmail);
 
   const nextStepUrl = existingEmployee
     ? `/portal-login?email=${encodeURIComponent(normalizedEmail)}&applied=1`

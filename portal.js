@@ -5138,6 +5138,12 @@ function renderAdminUsersTable() {
   const employeeStatusById = new Map(
     (adminState.employees || []).map((employee) => [Number(employee.id), String(employee.onboardingStatus || '')])
   );
+  const employeePositionById = new Map(
+    (adminState.employees || []).map((employee) => [
+      Number(employee.id),
+      String(employee.positionType || employee.positionTitle || employee.position || '').trim(),
+    ])
+  );
 
   const rows = adminState.users
     .filter((item) => {
@@ -5169,12 +5175,18 @@ function renderAdminUsersTable() {
         const selectCell = canBulkSelect
           ? `<input type="checkbox" class="admin-user-row-check" data-user-id="${item.id}" data-user-name="${escapeHtml(item.name)}" data-user-role="${escapeHtml(item.role || '')}" aria-label="Select ${escapeHtml(item.name)}" />`
           : '<input type="checkbox" class="admin-user-row-check" disabled title="Admin users cannot be bulk selected" aria-label="Admin users cannot be bulk selected" />';
+        const normalizedRole = String(item.role || '').toLowerCase();
+        const positionType = normalizedRole === 'admin'
+          ? 'Management'
+          : normalizedRole === 'jobsite'
+            ? 'Facility'
+            : (employeePositionById.get(Number(item.id)) || '—');
         const industry = item.industryTrack ? (item.industryTrack.charAt(0).toUpperCase() + item.industryTrack.slice(1)) : 'N/A';
-        return `<tr><td>${selectCell}</td><td>${escapeHtml(item.id)}</td><td>${escapeHtml(item.name)}</td><td>${escapeHtml(item.email)}</td><td>${roleBadge}</td><td>${escapeHtml(industry)}</td><td>${activeBadge}</td><td>${action}</td></tr>`;
+        return `<tr><td>${selectCell}</td><td>${escapeHtml(item.id)}</td><td>${escapeHtml(item.name)}</td><td>${escapeHtml(item.email)}</td><td>${roleBadge}</td><td>${escapeHtml(positionType)}</td><td>${escapeHtml(industry)}</td><td>${activeBadge}</td><td>${action}</td></tr>`;
       }
     );
 
-  setTableRows('adminUsersTbody', rows, 8, 'No users match this filter.');
+  setTableRows('adminUsersTbody', rows, 9, 'No users match this filter.');
   updateAdminUsersBulkBar();
 }
 

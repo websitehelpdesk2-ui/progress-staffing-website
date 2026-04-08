@@ -5,9 +5,9 @@ const http = require('http');
 const express = require('express');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
-const Database = require('better-sqlite3');
 const multer = require('multer');
 const { Server } = require('socket.io');
+const { bootstrapPostgresSchema, createDatabase, isProductionDeployment, isUsingPostgres } = require('./db');
 const {
   isEmailServiceConfigured,
   sendPasswordResetEmail,
@@ -23,19 +23,14 @@ const {
   generateAuthenticationOptions,
   verifyAuthenticationResponse,
 } = require('@simplewebauthn/server');
+const { localDataDir, resolveStoredFilePath, uploadDir } = require('./storage/file-storage');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*', methods: ['GET', 'POST'] } });
 const port = process.env.PORT || 3000;
 
-const dataDir = path.join(__dirname, 'data');
-fs.mkdirSync(dataDir, { recursive: true });
-const uploadDir = path.join(dataDir, 'uploads');
-fs.mkdirSync(uploadDir, { recursive: true });
-
-const dbPath = path.join(dataDir, 'app.db');
-const db = new Database(dbPath);
+const db = createDatabase();
 db.pragma('foreign_keys = ON');
 
 app.disable('x-powered-by');
@@ -59,7 +54,7 @@ const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN || '';
 const TWILIO_FROM_NUMBER = process.env.TWILIO_FROM_NUMBER || '';
 const VAPID_SUBJECT = process.env.VAPID_SUBJECT || `mailto:${EMAIL_FROM}`;
 const TIMESHEET_APPROVAL_ALERT_EMAIL = process.env.TIMESHEET_APPROVAL_ALERT_EMAIL || 'info@progresshealthcarestaffing.net';
-const vapidKeysPath = path.join(dataDir, 'vapid-keys.json');
+const vapidKeysPath = path.join(localDataDir, 'vapid-keys.json');
 const PASSKEY_CHALLENGE_TTL_MS = 5 * 60 * 1000;
 const PASSKEY_PROOF_TTL_MS = 5 * 60 * 1000;
 const SENSITIVE_PASSKEY_ACTIONS = new Set([
@@ -71,12 +66,7 @@ const passkeyChallenges = new Map();
 const passkeyActionProofs = new Map();
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
 const EMAIL_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000;
-
-function isProductionDeployment() {
-  const nodeEnv = String(process.env.NODE_ENV || '').trim().toLowerCase();
-  const renderFlag = String(process.env.RENDER || '').trim().toLowerCase();
-  return nodeEnv === 'production' || renderFlag === 'true';
-}
+const AUTO_DB_BOOTSTRAP = String(process.env.AUTO_DB_BOOTSTRAP || '').trim().toLowerCase() === 'true';
 
 function normalizeBaseUrl(rawValue, source) {
   const value = String(rawValue || '').trim();
@@ -407,6 +397,11 @@ function loadOrCreateVapidKeys() {
         publicKey: String(process.env.VAPID_PUBLIC_KEY),
         privateKey: String(process.env.VAPID_PRIVATE_KEY),
       };
+    }
+
+    if (isProductionDeployment()) {
+      console.error('Missing VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY in production. Push notifications are disabled until they are configured.');
+      return null;
     }
 
     if (fs.existsSync(vapidKeysPath)) {
@@ -4354,6 +4349,152 @@ function seedScopedPortalUsersIfMissing() {
   seedScopedPortalUserIfMissing(SCHEDULING_PORTAL_EMAIL, 'scheduling', 'Scheduling Portal');
 }
 
+function initializeSqliteStartupState() {
+  initDatabase();
+  ensureJobAssignmentsExpandedStatusConstraint();
+  ensureContractsExpandedStatusConstraint();
+  ensureColumn('applications', 'userId', 'INTEGER');
+  ensureColumn('applications', 'position', 'TEXT');
+  ensureColumn('applications', 'certificationAccepted', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn('applications', 'address', 'TEXT');
+  ensureColumn('applications', 'city', 'TEXT');
+  ensureColumn('applications', 'state', 'TEXT');
+  ensureColumn('applications', 'zip', 'TEXT');
+  ensureColumn('employee_documents', 'expirationDate', 'TEXT');
+  ensureColumn('employee_documents', 'documentStatus', 'TEXT');
+  ensureColumn('employee_documents', 'uploadedByUserId', 'INTEGER');
+  ensureColumn('employee_documents', 'uploadedByRole', 'TEXT');
+  ensureColumn('users', 'passcodeHash', 'TEXT');
+  ensureColumn('users', 'passcodeSalt', 'TEXT');
+  ensureColumn('users', 'notifyEmailEnabled', 'INTEGER NOT NULL DEFAULT 1');
+  ensureColumn('users', 'notifySmsEnabled', 'INTEGER NOT NULL DEFAULT 1');
+  ensureColumn('users', 'notifyPushEnabled', 'INTEGER NOT NULL DEFAULT 1');
+  ensureColumn('users', 'isVerified', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn('users', 'emailVerificationToken', 'TEXT');
+  ensureColumn('users', 'emailVerificationExpiresAt', 'INTEGER');
+  ensureColumn('users', 'portalScope', "TEXT NOT NULL DEFAULT 'full'");
+  ensureColumn('users', 'requireBiometricSensitive', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn('users', 'adminEmployeeIndustryTrack', 'TEXT DEFAULT NULL');
+  db.prepare("UPDATE users SET portalScope = 'full' WHERE portalScope IS NULL OR TRIM(portalScope) = ''").run();
+  db.prepare("UPDATE users SET isVerified = 1 WHERE role = 'admin' AND (isVerified IS NULL OR isVerified = 0)").run();
+  ensureColumn('employee_profiles', 'address', 'TEXT');
+  ensureColumn('employee_profiles', 'city', 'TEXT');
+  ensureColumn('employee_profiles', 'state', 'TEXT');
+  ensureColumn('employee_profiles', 'zip', 'TEXT');
+  ensureColumn('employee_profiles', 'backgroundStatus', 'TEXT');
+  ensureColumn('employee_profiles', 'ssnEncrypted', 'TEXT');
+  ensureColumn('employee_profiles', 'industryType', 'TEXT');
+  ensureColumn('employee_profiles', 'positionTitle', 'TEXT');
+  ensureColumn('jobsite_profiles', 'industryTrack', 'TEXT');
+  ensureColumn('jobsite_profiles', 'geofenceLatitude', 'REAL');
+  ensureColumn('jobsite_profiles', 'geofenceLongitude', 'REAL');
+  ensureColumn('jobs', 'statPayEnabled', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn('jobs', 'statPaySignatureName', 'TEXT');
+  ensureColumn('jobs', 'statPaySignedAt', 'DATETIME');
+  ensureColumn('job_assignments', 'statusReason', 'TEXT');
+  ensureColumn('job_assignments', 'cancellationType', 'TEXT');
+  ensureColumn('job_assignments', 'statusUpdatedByUserId', 'INTEGER');
+  ensureColumn('job_assignments', 'statusUpdatedAt', 'DATETIME');
+  ensureColumn('job_assignments', 'excuseFormId', 'INTEGER');
+  ensureColumn('employee_time_clock_entries', 'clockInLatitude', 'REAL');
+  ensureColumn('employee_time_clock_entries', 'clockInLongitude', 'REAL');
+  ensureColumn('employee_time_clock_entries', 'clockOutLatitude', 'REAL');
+  ensureColumn('employee_time_clock_entries', 'clockOutLongitude', 'REAL');
+  ensureColumn('employee_time_clock_entries', 'geofenceDistanceFeet', 'REAL');
+  ensureColumn('employee_time_clock_entries', 'timesheetId', 'INTEGER');
+  ensureColumn('timesheets', 'source', 'TEXT');
+  ensureColumn('timesheets', 'paperOriginalName', 'TEXT');
+
+  (function backfillEmployeeProfileHeaderFields() {
+    const employees = db.prepare("SELECT id, email FROM users WHERE role = 'employee'").all();
+    employees.forEach((employee) => {
+      buildEmployeeProfileHeaderData(employee.id, employee.email);
+    });
+  })();
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS employee_excuse_forms (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employeeUserId INTEGER NOT NULL,
+      assignmentId INTEGER NOT NULL,
+      jobId INTEGER NOT NULL,
+      cancellationType TEXT NOT NULL CHECK(cancellationType IN ('medical', 'non_medical')),
+      reason TEXT NOT NULL,
+      doctorNoteDocumentId INTEGER,
+      shiftStartAt TEXT,
+      cancelledAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'denied')),
+      adminSignature TEXT,
+      reviewedByUserId INTEGER,
+      reviewedAt TEXT,
+      FOREIGN KEY (employeeUserId) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (assignmentId) REFERENCES job_assignments(id) ON DELETE CASCADE,
+      FOREIGN KEY (jobId) REFERENCES jobs(id) ON DELETE CASCADE,
+      FOREIGN KEY (doctorNoteDocumentId) REFERENCES employee_documents(id) ON DELETE SET NULL,
+      FOREIGN KEY (reviewedByUserId) REFERENCES users(id) ON DELETE SET NULL
+    );
+  `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS user_passkeys (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      userId INTEGER NOT NULL,
+      credentialId TEXT NOT NULL UNIQUE,
+      publicKey TEXT NOT NULL,
+      counter INTEGER NOT NULL DEFAULT 0,
+      transports TEXT,
+      deviceType TEXT,
+      backedUp INTEGER NOT NULL DEFAULT 0,
+      createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      lastUsedAt DATETIME,
+      FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+    );
+  `);
+  ensureColumn('timesheets', 'paperStoredName', 'TEXT');
+  ensureColumn('timesheets', 'paperMimeType', 'TEXT');
+  ensureColumn('timesheets', 'paperFileSize', 'INTEGER');
+  ensureColumn('contracts', 'clientOpenedAt', 'DATETIME');
+  ensureColumn('contracts', 'clientSignedAt', 'DATETIME');
+  ensureColumn('contracts', 'clientSignatureName', 'TEXT');
+  ensureColumn('contracts', 'clientAuthorized', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn('contracts', 'adminSignedAt', 'DATETIME');
+  ensureColumn('contracts', 'adminSignatureName', 'TEXT');
+  ensureColumn('contracts', 'adminAuthorized', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn('contracts', 'declinedAt', 'DATETIME');
+  ensureColumn('contracts', 'declinedReason', 'TEXT');
+  ensureColumn('contracts', 'withdrawnAt', 'DATETIME');
+  ensureColumn('contracts', 'withdrawnReason', 'TEXT');
+  ensureColumn('contracts', 'withdrawnByUserId', 'INTEGER');
+  ensureColumn('contracts', 'executedAt', 'DATETIME');
+  ensureColumn('contracts', 'renewalDueAt', 'DATETIME');
+  ensureColumn('contracts', 'renewalNotifiedAt', 'DATETIME');
+  ensureColumn('contracts', 'renewalClientDecision', 'TEXT');
+  ensureColumn('contracts', 'renewalAdminDecision', 'TEXT');
+  ensureColumn('contracts', 'clientRenewalSignatureName', 'TEXT');
+  ensureColumn('contracts', 'adminRenewalSignatureName', 'TEXT');
+  ensureColumn('contracts', 'clientWithdrawalSignatureName', 'TEXT');
+  ensureColumn('contracts', 'clientWithdrawalSignedAt', 'DATETIME');
+  ensureColumn('contracts', 'adminWithdrawalSignatureName', 'TEXT');
+  ensureColumn('contracts', 'adminWithdrawalSignedAt', 'DATETIME');
+  ensureColumn('contracts', 'withdrawalInitiatedAt', 'DATETIME');
+  ensureColumn('employee_excuse_forms', 'doctorNoteAcknowledged', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn('employee_excuse_forms', 'shiftEndAt', 'TEXT');
+  ensureColumn('employee_excuse_forms', 'submittedAsNcns', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn('direct_messages', 'senderDeletedAt', 'DATETIME');
+  ensureColumn('direct_messages', 'recipientDeletedAt', 'DATETIME');
+  seedAdminIfMissing();
+  seedScopedPortalUsersIfMissing();
+
+  (function migrateContractIndustryTracks() {
+    const allContracts = db.prepare('SELECT id, jobsiteUserId, industryTrack FROM contracts').all();
+    for (const contract of allContracts) {
+      const correctTrack = getJobsiteIndustryTrack(contract.jobsiteUserId);
+      if (correctTrack && correctTrack !== contract.industryTrack) {
+        db.prepare('UPDATE contracts SET industryTrack = ? WHERE id = ?').run(correctTrack, contract.id);
+      }
+    }
+  })();
+}
+
 function createLimiter(windowMs, max, message, options = {}) {
   return rateLimit({
     windowMs,
@@ -4371,150 +4512,15 @@ function createLimiter(windowMs, max, message, options = {}) {
   });
 }
 
-initDatabase();
-ensureJobAssignmentsExpandedStatusConstraint();
-ensureContractsExpandedStatusConstraint();
-ensureColumn('applications', 'userId', 'INTEGER');
-ensureColumn('applications', 'position', 'TEXT');
-ensureColumn('applications', 'certificationAccepted', 'INTEGER NOT NULL DEFAULT 0');
-ensureColumn('applications', 'address', 'TEXT');
-ensureColumn('applications', 'city', 'TEXT');
-ensureColumn('applications', 'state', 'TEXT');
-ensureColumn('applications', 'zip', 'TEXT');
-ensureColumn('employee_documents', 'expirationDate', 'TEXT');
-ensureColumn('employee_documents', 'documentStatus', 'TEXT');
-ensureColumn('employee_documents', 'uploadedByUserId', 'INTEGER');
-ensureColumn('employee_documents', 'uploadedByRole', 'TEXT');
-ensureColumn('users', 'passcodeHash', 'TEXT');
-ensureColumn('users', 'passcodeSalt', 'TEXT');
-ensureColumn('users', 'notifyEmailEnabled', 'INTEGER NOT NULL DEFAULT 1');
-ensureColumn('users', 'notifySmsEnabled', 'INTEGER NOT NULL DEFAULT 1');
-ensureColumn('users', 'notifyPushEnabled', 'INTEGER NOT NULL DEFAULT 1');
-ensureColumn('users', 'isVerified', 'INTEGER NOT NULL DEFAULT 0');
-ensureColumn('users', 'emailVerificationToken', 'TEXT');
-ensureColumn('users', 'emailVerificationExpiresAt', 'INTEGER');
-ensureColumn('users', 'portalScope', "TEXT NOT NULL DEFAULT 'full'");
-ensureColumn('users', 'requireBiometricSensitive', 'INTEGER NOT NULL DEFAULT 0');
-ensureColumn('users', 'adminEmployeeIndustryTrack', "TEXT DEFAULT NULL");
-db.prepare("UPDATE users SET portalScope = 'full' WHERE portalScope IS NULL OR TRIM(portalScope) = ''").run();
-db.prepare("UPDATE users SET isVerified = 1 WHERE role = 'admin' AND (isVerified IS NULL OR isVerified = 0)").run();
-ensureColumn('employee_profiles', 'address', 'TEXT');
-ensureColumn('employee_profiles', 'city', 'TEXT');
-ensureColumn('employee_profiles', 'state', 'TEXT');
-ensureColumn('employee_profiles', 'zip', 'TEXT');
-ensureColumn('employee_profiles', 'backgroundStatus', 'TEXT');
-ensureColumn('employee_profiles', 'ssnEncrypted', 'TEXT');
-ensureColumn('employee_profiles', 'industryType', 'TEXT');
-ensureColumn('employee_profiles', 'positionTitle', 'TEXT');
-ensureColumn('jobsite_profiles', 'industryTrack', 'TEXT');
-ensureColumn('jobsite_profiles', 'geofenceLatitude', 'REAL');
-ensureColumn('jobsite_profiles', 'geofenceLongitude', 'REAL');
-ensureColumn('jobs', 'statPayEnabled', 'INTEGER NOT NULL DEFAULT 0');
-ensureColumn('jobs', 'statPaySignatureName', 'TEXT');
-ensureColumn('jobs', 'statPaySignedAt', 'DATETIME');
-ensureColumn('job_assignments', 'statusReason', 'TEXT');
-ensureColumn('job_assignments', 'cancellationType', 'TEXT');
-ensureColumn('job_assignments', 'statusUpdatedByUserId', 'INTEGER');
-ensureColumn('job_assignments', 'statusUpdatedAt', 'DATETIME');
-ensureColumn('job_assignments', 'excuseFormId', 'INTEGER');
-ensureColumn('employee_time_clock_entries', 'clockInLatitude', 'REAL');
-ensureColumn('employee_time_clock_entries', 'clockInLongitude', 'REAL');
-ensureColumn('employee_time_clock_entries', 'clockOutLatitude', 'REAL');
-ensureColumn('employee_time_clock_entries', 'clockOutLongitude', 'REAL');
-ensureColumn('employee_time_clock_entries', 'geofenceDistanceFeet', 'REAL');
-ensureColumn('employee_time_clock_entries', 'timesheetId', 'INTEGER');
-ensureColumn('timesheets', 'source', 'TEXT');
-ensureColumn('timesheets', 'paperOriginalName', 'TEXT');
-
-(function backfillEmployeeProfileHeaderFields() {
-  const employees = db.prepare("SELECT id, email FROM users WHERE role = 'employee'").all();
-  employees.forEach((employee) => {
-    buildEmployeeProfileHeaderData(employee.id, employee.email);
-  });
-})();
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS employee_excuse_forms (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    employeeUserId INTEGER NOT NULL,
-    assignmentId INTEGER NOT NULL,
-    jobId INTEGER NOT NULL,
-    cancellationType TEXT NOT NULL CHECK(cancellationType IN ('medical', 'non_medical')),
-    reason TEXT NOT NULL,
-    doctorNoteDocumentId INTEGER,
-    shiftStartAt TEXT,
-    cancelledAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'denied')),
-    adminSignature TEXT,
-    reviewedByUserId INTEGER,
-    reviewedAt TEXT,
-    FOREIGN KEY (employeeUserId) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (assignmentId) REFERENCES job_assignments(id) ON DELETE CASCADE,
-    FOREIGN KEY (jobId) REFERENCES jobs(id) ON DELETE CASCADE,
-    FOREIGN KEY (doctorNoteDocumentId) REFERENCES employee_documents(id) ON DELETE SET NULL,
-    FOREIGN KEY (reviewedByUserId) REFERENCES users(id) ON DELETE SET NULL
-  );
-`);
-db.exec(`
-  CREATE TABLE IF NOT EXISTS user_passkeys (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    userId INTEGER NOT NULL,
-    credentialId TEXT NOT NULL UNIQUE,
-    publicKey TEXT NOT NULL,
-    counter INTEGER NOT NULL DEFAULT 0,
-    transports TEXT,
-    deviceType TEXT,
-    backedUp INTEGER NOT NULL DEFAULT 0,
-    createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    lastUsedAt DATETIME,
-    FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
-  );
-`);
-ensureColumn('timesheets', 'paperStoredName', 'TEXT');
-ensureColumn('timesheets', 'paperMimeType', 'TEXT');
-ensureColumn('timesheets', 'paperFileSize', 'INTEGER');
-ensureColumn('contracts', 'clientOpenedAt', 'DATETIME');
-ensureColumn('contracts', 'clientSignedAt', 'DATETIME');
-ensureColumn('contracts', 'clientSignatureName', 'TEXT');
-ensureColumn('contracts', 'clientAuthorized', 'INTEGER NOT NULL DEFAULT 0');
-ensureColumn('contracts', 'adminSignedAt', 'DATETIME');
-ensureColumn('contracts', 'adminSignatureName', 'TEXT');
-ensureColumn('contracts', 'adminAuthorized', 'INTEGER NOT NULL DEFAULT 0');
-ensureColumn('contracts', 'declinedAt', 'DATETIME');
-ensureColumn('contracts', 'declinedReason', 'TEXT');
-ensureColumn('contracts', 'withdrawnAt', 'DATETIME');
-ensureColumn('contracts', 'withdrawnReason', 'TEXT');
-ensureColumn('contracts', 'withdrawnByUserId', 'INTEGER');
-ensureColumn('contracts', 'executedAt', 'DATETIME');
-ensureColumn('contracts', 'renewalDueAt', 'DATETIME');
-ensureColumn('contracts', 'renewalNotifiedAt', 'DATETIME');
-ensureColumn('contracts', 'renewalClientDecision', 'TEXT');
-ensureColumn('contracts', 'renewalAdminDecision', 'TEXT');
-ensureColumn('contracts', 'clientRenewalSignatureName', 'TEXT');
-ensureColumn('contracts', 'adminRenewalSignatureName', 'TEXT');
-ensureColumn('contracts', 'clientWithdrawalSignatureName', 'TEXT');
-ensureColumn('contracts', 'clientWithdrawalSignedAt', 'DATETIME');
-ensureColumn('contracts', 'adminWithdrawalSignatureName', 'TEXT');
-ensureColumn('contracts', 'adminWithdrawalSignedAt', 'DATETIME');
-ensureColumn('contracts', 'withdrawalInitiatedAt', 'DATETIME');
-ensureColumn('employee_excuse_forms', 'doctorNoteAcknowledged', 'INTEGER NOT NULL DEFAULT 0');
-ensureColumn('employee_excuse_forms', 'shiftEndAt', 'TEXT');
-ensureColumn('employee_excuse_forms', 'submittedAsNcns', 'INTEGER NOT NULL DEFAULT 0');
-ensureColumn('direct_messages', 'senderDeletedAt', 'DATETIME');
-ensureColumn('direct_messages', 'recipientDeletedAt', 'DATETIME');
-seedAdminIfMissing();
-seedScopedPortalUsersIfMissing();
-
-// One-time migration: fix contracts whose stored industryTrack doesn't match the client's actual track
-(function migrateContractIndustryTracks() {
-  const allContracts = db.prepare('SELECT id, jobsiteUserId, industryTrack FROM contracts').all();
-  for (const contract of allContracts) {
-    const correctTrack = getJobsiteIndustryTrack(contract.jobsiteUserId);
-    if (correctTrack && correctTrack !== contract.industryTrack) {
-      db.prepare('UPDATE contracts SET industryTrack = ? WHERE id = ?').run(correctTrack, contract.id);
-    }
+if (isUsingPostgres) {
+  if (AUTO_DB_BOOTSTRAP) {
+    bootstrapPostgresSchema(db);
+  } else {
+    console.log('[startup] PostgreSQL detected. Automatic schema bootstrap and startup data mutations are disabled.');
   }
-})();
+} else {
+  initializeSqliteStartupState();
+}
 
 const loginLimiter = createLimiter(15 * 60 * 1000, 60, 'Too many login attempts. Please try again later.', {
   skipSuccessfulRequests: true,
@@ -5426,7 +5432,7 @@ app.get('/api/portal/contracts/bank/:id/file', authGuard(['admin']), (req, res) 
   if (!Number.isInteger(bankId) || bankId < 1) return res.status(400).json({ error: 'Invalid id.' });
   const entry = db.prepare('SELECT * FROM contract_bank WHERE id = ?').get(bankId);
   if (!entry) return res.status(404).json({ error: 'Not found.' });
-  const fullPath = path.join(uploadDir, entry.storedName);
+  const fullPath = resolveStoredFilePath(entry.storedName);
   if (!fs.existsSync(fullPath)) return res.status(404).json({ error: 'File missing from storage.' });
   return res.download(fullPath, entry.originalName || 'Contract.pdf');
 });
@@ -6694,7 +6700,7 @@ app.get('/api/portal/documents/:id/file', authGuard(), (req, res) => {
 
   // Admin can access all employee documents.
   if (req.auth.role === 'admin') {
-    const fullPath = path.join(uploadDir, doc.storedName);
+    const fullPath = resolveStoredFilePath(doc.storedName);
     if (!fs.existsSync(fullPath)) return res.status(404).json({ error: 'File not found.' });
     return res.sendFile(fullPath);
   }
@@ -6707,7 +6713,7 @@ app.get('/api/portal/documents/:id/file', authGuard(), (req, res) => {
     if (String(doc.documentType || '').toLowerCase() === 'background_check' && String(doc.uploadedByRole || '').toLowerCase() !== 'admin') {
       return res.status(403).json({ error: 'Background document must be uploaded by admin.' });
     }
-    const fullPath = path.join(uploadDir, doc.storedName);
+    const fullPath = resolveStoredFilePath(doc.storedName);
     if (!fs.existsSync(fullPath)) return res.status(404).json({ error: 'File not found.' });
     return res.sendFile(fullPath);
   }
@@ -6768,7 +6774,7 @@ app.get('/api/portal/documents/:id/file', authGuard(), (req, res) => {
       return res.status(403).json({ error: 'Document type is not available for this client profile.' });
     }
 
-    const fullPath = path.join(uploadDir, doc.storedName);
+    const fullPath = resolveStoredFilePath(doc.storedName);
     if (!fs.existsSync(fullPath)) return res.status(404).json({ error: 'File not found.' });
     return res.sendFile(fullPath);
   }
@@ -6779,7 +6785,7 @@ app.get('/api/portal/documents/:id/file', authGuard(), (req, res) => {
       return res.status(403).json({ error: 'Social Security documents are not available through this role.' });
     }
 
-    const fullPath = path.join(uploadDir, doc.storedName);
+    const fullPath = resolveStoredFilePath(doc.storedName);
     if (!fs.existsSync(fullPath)) return res.status(404).json({ error: 'File not found.' });
     return res.sendFile(fullPath);
   }
@@ -8263,7 +8269,7 @@ app.delete('/api/portal/employee/applications/:id', authGuard(['employee']), (re
 
   docs.forEach((doc) => {
     if (!doc || !doc.storedName) return;
-    const fullPath = path.join(uploadDir, doc.storedName);
+    const fullPath = resolveStoredFilePath(doc.storedName);
     try {
       if (fs.existsSync(fullPath)) {
         fs.unlinkSync(fullPath);
@@ -8309,7 +8315,7 @@ app.delete('/api/portal/employee/account', authGuard(['employee']), (req, res) =
   for (const row of documentRows) {
     const storedName = String(row && row.storedName ? row.storedName : '').trim();
     if (!storedName) continue;
-    const fullPath = path.join(uploadDir, storedName);
+    const fullPath = resolveStoredFilePath(storedName);
     if (fs.existsSync(fullPath)) {
       try {
         fs.unlinkSync(fullPath);
@@ -9976,7 +9982,7 @@ app.delete('/api/admin/users/:id', authGuard(['admin']), (req, res) => {
 
   docs.forEach((doc) => {
     if (!doc || !doc.storedName) return;
-    const fullPath = path.join(uploadDir, doc.storedName);
+    const fullPath = resolveStoredFilePath(doc.storedName);
     try {
       if (fs.existsSync(fullPath)) {
         fs.unlinkSync(fullPath);
@@ -10754,7 +10760,7 @@ app.get('/api/contract-bank/:id/file', authGuard(['admin']), (req, res) => {
   if (!Number.isInteger(bankId) || bankId < 1) return res.status(400).json({ error: 'Invalid id.' });
   const entry = db.prepare('SELECT * FROM contract_bank WHERE id = ?').get(bankId);
   if (!entry) return res.status(404).json({ error: 'Not found.' });
-  const fullPath = path.join(uploadDir, entry.storedName);
+  const fullPath = resolveStoredFilePath(entry.storedName);
   if (!fs.existsSync(fullPath)) return res.status(404).json({ error: 'File missing from storage.' });
   return res.download(fullPath, entry.originalName || 'Contract.pdf');
 });
@@ -10795,7 +10801,7 @@ app.delete('/api/admin/contract-bank/:id', authGuard(['admin']), (req, res) => {
   // Only remove the physical file if no active contract references it
   const ref = db.prepare('SELECT COUNT(*) as n FROM contracts WHERE storedName = ?').get(entry.storedName);
   if (!ref || ref.n === 0) {
-    const fullPath = path.join(uploadDir, entry.storedName);
+    const fullPath = resolveStoredFilePath(entry.storedName);
     if (fs.existsSync(fullPath)) fs.unlink(fullPath, () => {});
   }
   emitContractsDomainSyncToAdmins();
@@ -10849,7 +10855,7 @@ app.get('/api/misc-docs/:id/file', authGuard(['admin']), (req, res) => {
   if (!Number.isInteger(docId) || docId < 1) return res.status(400).json({ error: 'Invalid id.' });
   const entry = db.prepare('SELECT * FROM misc_docs WHERE id = ?').get(docId);
   if (!entry) return res.status(404).json({ error: 'Not found.' });
-  const fullPath = path.join(uploadDir, entry.storedName);
+  const fullPath = resolveStoredFilePath(entry.storedName);
   if (!fs.existsSync(fullPath)) return res.status(404).json({ error: 'File missing from storage.' });
   return res.download(fullPath, entry.originalName || 'document');
 });
@@ -10860,7 +10866,7 @@ app.delete('/api/admin/misc-docs/:id', authGuard(['admin']), (req, res) => {
   const entry = db.prepare('SELECT * FROM misc_docs WHERE id = ?').get(docId);
   if (!entry) return res.status(404).json({ error: 'Not found.' });
   db.prepare('DELETE FROM misc_docs WHERE id = ?').run(docId);
-  const fullPath = path.join(uploadDir, entry.storedName);
+  const fullPath = resolveStoredFilePath(entry.storedName);
   if (fs.existsSync(fullPath)) fs.unlink(fullPath, () => {});
   emitContractsDomainSyncToAdmins();
   return res.json({ deleted: true });
@@ -10914,7 +10920,7 @@ app.get('/api/portal/employee/misc-docs/:id/file', authGuard(['employee']), (req
   if (!send) return res.status(403).json({ error: 'Access denied.' });
   const entry = db.prepare('SELECT * FROM misc_docs WHERE id = ?').get(docId);
   if (!entry) return res.status(404).json({ error: 'Not found.' });
-  const fullPath = path.join(uploadDir, entry.storedName);
+  const fullPath = resolveStoredFilePath(entry.storedName);
   if (!fs.existsSync(fullPath)) return res.status(404).json({ error: 'File missing from storage.' });
   return res.download(fullPath, entry.originalName || 'document');
 });
@@ -10938,7 +10944,7 @@ app.get('/api/portal/jobsite/misc-docs/:id/file', authGuard(['jobsite']), (req, 
   if (!send) return res.status(403).json({ error: 'Access denied.' });
   const entry = db.prepare('SELECT * FROM misc_docs WHERE id = ?').get(docId);
   if (!entry) return res.status(404).json({ error: 'Not found.' });
-  const fullPath = path.join(uploadDir, entry.storedName);
+  const fullPath = resolveStoredFilePath(entry.storedName);
   if (!fs.existsSync(fullPath)) return res.status(404).json({ error: 'File missing from storage.' });
   return res.download(fullPath, entry.originalName || 'document');
 });
@@ -11090,7 +11096,7 @@ app.get('/api/contracts/:id/file', authGuard(['admin', 'jobsite']), (req, res) =
     db.prepare('UPDATE contracts SET clientOpenedAt = COALESCE(clientOpenedAt, CURRENT_TIMESTAMP), updatedAt = CURRENT_TIMESTAMP WHERE id = ?').run(contractId);
   }
 
-  const fullPath = path.join(uploadDir, contract.storedName);
+  const fullPath = resolveStoredFilePath(contract.storedName);
   if (!fs.existsSync(fullPath)) {
     return res.status(404).json({ error: 'Contract file is missing from storage.' });
   }
@@ -12373,7 +12379,7 @@ app.get('/api/portal/timesheets/:id/file', authGuard(), (req, res) => {
     return res.status(403).json({ error: 'Forbidden' });
   }
 
-  const fullPath = path.join(uploadDir, row.paperStoredName);
+  const fullPath = resolveStoredFilePath(row.paperStoredName);
   if (!fs.existsSync(fullPath)) {
     return res.status(404).json({ error: 'Timesheet file is missing from storage.' });
   }

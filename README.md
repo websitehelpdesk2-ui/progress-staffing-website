@@ -34,7 +34,8 @@ This project now includes role-based portal scaffolding for:
 
 - The site is served statically from `index.html`.
 - Job applications are submitted via `apply.html` and posted to `/api/apply`.
-- Applications are stored in a local SQLite database (`data/app.db`).
+- In production, structured application and portal data must be stored in PostgreSQL via `DATABASE_URL`.
+- Local SQLite (`data/app.db`) is only a development fallback and migration source.
 - After applying, candidates are redirected into portal onboarding (register/login).
 - Portal auth uses email/password login, optional 4-digit passcodes, and session tokens.
 - View submissions at `GET /api/applications` (admin role required).
@@ -146,13 +147,15 @@ Override with environment variables:
 ## Notification Environment Variables
 
 - `APP_BASE_URL`: public base URL used in email and SMS links.
+- `DATABASE_URL`: PostgreSQL connection string used for all structured production data.
+- `UPLOAD_STORAGE_DIR`: durable filesystem mount for uploads if object storage is not yet configured. This must not point at Render ephemeral app disk.
 - `POSTMARK_SERVER_TOKEN`: Postmark server API token for outbound mail.
 - `EMAIL_FROM`: sender address for email notifications. Defaults to `onboarding@progressstaffingagency.com`.
 - `EMAIL_REPLY_TO`: reply-to address for email notifications. Defaults to `onboarding@progressstaffingagency.com`.
 - `TWILIO_ACCOUNT_SID`
 - `TWILIO_AUTH_TOKEN`
 - `TWILIO_FROM_NUMBER`
-- `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` (optional). If omitted, the app generates and stores VAPID keys under `data/vapid-keys.json`.
+- `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY`: required in production. Production no longer falls back to `data/vapid-keys.json`.
 
 If Postmark, Twilio, or push settings are not configured, the related notification channel is skipped without breaking shift posting.
 
@@ -165,4 +168,6 @@ If Postmark, Twilio, or push settings are not configured, the related notificati
 ## Deployment
 
 - For a static-only deployment, deploy the folder to any static host (GitHub Pages, Netlify, Vercel).
-- For backend functionality, deploy the Node.js server using a platform that supports Node (e.g. Vercel, Heroku, Railway, Fly.io).
+- For backend functionality, deploy the Node.js server with PostgreSQL configured through `DATABASE_URL`.
+- Before first production boot on Render, import existing SQLite data with `npm run migrate:sqlite-to-postgres`.
+- Configure either object storage or a durable mounted upload path through `UPLOAD_STORAGE_DIR` before relying on uploaded files in production.

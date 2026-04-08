@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Portal Smoke</title>
+</head>
+<body>
+  <pre id="status">Starting smoke test...</pre>
+  <iframe id="probe" title="probe" style="width:1200px;height:900px;border:0;"></iframe>
+  <script>
+    (async () => {
+      const status = document.getElementById('status');
+      const probe = document.getElementById('probe');
+      const params = new URLSearchParams(window.location.search);
+      const email = params.get('email') || 'admin@progressstaffingagency.com';
+      const password = params.get('password') || 'ChangeMe123!';
+      const target = params.get('target') || '/portal-admin';
+
+      window.addEventListener('error', (event) => {
+        status.textContent = `Window error: ${event.message}`;
+      });
+
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok || !payload.token) {
+          status.textContent = `Login failed: ${(payload && payload.error) || res.status}`;
+          return;
+        }
+
+        localStorage.setItem('psa_portal_token', payload.token);
+        status.textContent = `Login ok. Loading ${target}...`;
+
+        probe.addEventListener('load', () => {
+          try {
+            const doc = probe.contentWindow.document;
+            const greeting = doc.getElementById('portalGreeting');
+            const title = (doc.title || '').trim();
+            const detail = greeting && greeting.textContent
+              ? greeting.textContent.trim()
+              : (title || 'Loaded, but portal greeting was not found.');
+            status.textContent = `Loaded ${target}: ${detail}`;
+          } catch (error) {
+            status.textContent = `Iframe load error: ${error && error.message ? error.message : error}`;
+          }
+        }, { once: true });
+
+        probe.src = target;
+      } catch (error) {
+        status.textContent = `Smoke setup failed: ${error && error.message ? error.message : error}`;
+      }
+    })();
+  </script>
+</body>
+</html>

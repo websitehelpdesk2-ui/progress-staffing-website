@@ -146,18 +146,21 @@ Override with environment variables:
 ## Notification Environment Variables
 
 - `APP_BASE_URL`: public base URL used in email and SMS links.
-- `EMAIL_FROM`: sender address for email notifications.
-- `SMTP_HOST`
-- `SMTP_PORT`
-- `SMTP_SECURE=true|false`
-- `SMTP_USER`
-- `SMTP_PASS`
+- `POSTMARK_SERVER_TOKEN`: Postmark server API token for outbound mail.
+- `EMAIL_FROM`: sender address for email notifications. Defaults to `onboarding@progressstaffingagency.com`.
+- `EMAIL_REPLY_TO`: reply-to address for email notifications. Defaults to `onboarding@progressstaffingagency.com`.
 - `TWILIO_ACCOUNT_SID`
 - `TWILIO_AUTH_TOKEN`
 - `TWILIO_FROM_NUMBER`
 - `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` (optional). If omitted, the app generates and stores VAPID keys under `data/vapid-keys.json`.
 
-If SMTP, Twilio, or push settings are not configured, the related notification channel is skipped without breaking shift posting.
+If Postmark, Twilio, or push settings are not configured, the related notification channel is skipped without breaking shift posting.
+
+## Test Email Route
+
+- `POST /api/admin/test-email` (admin)
+- Request body accepts `to`, `subject`, `text`, and optional `html`.
+- Uses the live Postmark service configuration and returns the provider response payload.
 
 ## Deployment
 

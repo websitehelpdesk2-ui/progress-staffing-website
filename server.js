@@ -23,7 +23,13 @@ const {
   generateAuthenticationOptions,
   verifyAuthenticationResponse,
 } = require('@simplewebauthn/server');
-const { localDataDir, resolveStoredFilePath, uploadDir } = require('./storage/file-storage');
+const {
+  deleteStoredFile,
+  isStorageNotFoundError,
+  localDataDir,
+  sendStoredFile,
+  storeUploadedFile,
+} = require('./storage/file-storage');
 
 const app = express();
 const server = http.createServer(app);
@@ -38,11 +44,12 @@ app.set('trust proxy', 1);
 
 const SESSION_TTL_SECONDS = 60 * 60 * 24; // 24 hours
 const CLOCK_GEOFENCE_FEET = 1000;
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@progressstaffingagency.com';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'ChangeMe123!';
-const ONBOARDING_PORTAL_EMAIL = 'onboarding@progressstaffingagency.com';
-const CONTRACTS_PORTAL_EMAIL = 'contracts@progressstaffingagency.com';
-const SCHEDULING_PORTAL_EMAIL = 'scheduling@progressstaffingagency.com';
+const ADMIN_EMAIL = String(process.env.ADMIN_EMAIL || '').trim();
+const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || '');
+const ONBOARDING_PORTAL_EMAIL = String(process.env.ONBOARDING_PORTAL_EMAIL || '').trim();
+const CONTRACTS_PORTAL_EMAIL = String(process.env.CONTRACTS_PORTAL_EMAIL || '').trim();
+const SCHEDULING_PORTAL_EMAIL = String(process.env.SCHEDULING_PORTAL_EMAIL || '').trim();
+const SCOPED_PORTAL_PASSCODE = String(process.env.SCOPED_PORTAL_PASSCODE || '').trim();
 const ADMIN_SCOPES = new Set(['full', 'onboarding', 'contracts', 'scheduling']);
 const LOCAL_APP_BASE_URL = `http://localhost:${port}`;
 const APP_URL_PLACEHOLDER_BASE = 'http://app.local';
@@ -66,7 +73,7 @@ const passkeyChallenges = new Map();
 const passkeyActionProofs = new Map();
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
 const EMAIL_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000;
-const AUTO_DB_BOOTSTRAP = String(process.env.AUTO_DB_BOOTSTRAP || '').trim().toLowerCase() === 'true';
+const AUTO_DB_BOOTSTRAP = !isProductionDeployment() && String(process.env.AUTO_DB_BOOTSTRAP || '').trim().toLowerCase() === 'true';
 
 function normalizeBaseUrl(rawValue, source) {
   const value = String(rawValue || '').trim();
@@ -511,14 +518,7 @@ const EMPLOYEE_DOCUMENT_PROFILES = {
 const HEALTHCARE_INDUSTRIES = new Set(['healthcare', 'cna', 'cma', 'rn', 'lpn', 'lvn', 'dietary']);
 
 const upload = multer({
-  storage: multer.diskStorage({
-    destination: (_req, _file, cb) => cb(null, uploadDir),
-    filename: (_req, file, cb) => {
-      const ext = path.extname(file.originalname || '').toLowerCase();
-      const unique = `${Date.now()}-${crypto.randomBytes(8).toString('hex')}`;
-      cb(null, `${unique}${ext}`);
-    },
-  }),
+  storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     const allowed = new Set([
@@ -536,6 +536,59 @@ const upload = multer({
     cb(null, true);
   },
 });
+
+async function persistUploadedFile(file, namespace) {
+  if (!file) return null;
+  const stored = await storeUploadedFile(file, { namespace });
+  file.filename = stored.storageKey;
+  file.storedName = stored.storageKey;
+  return file;
+}
+
+async function persistUploadedFiles(files, namespace) {
+  const uploadedFiles = Array.isArray(files) ? files : [];
+  const persisted = [];
+  try {
+    for (const file of uploadedFiles) {
+      persisted.push(await persistUploadedFile(file, namespace));
+    }
+    return persisted;
+  } catch (error) {
+    await Promise.allSettled(persisted.map((file) => deleteStoredFile(file.storedName)));
+    throw error;
+  }
+}
+
+function discardUploadedFile(file) {
+  if (!file) return;
+  const storedName = String(file.storedName || file.filename || '').trim();
+  if (!storedName) return;
+  deleteStoredFile(storedName).catch(() => {});
+}
+
+function discardUploadedFiles(files) {
+  (Array.isArray(files) ? files : []).forEach((file) => discardUploadedFile(file));
+}
+
+function removeStoredFileLater(storedName) {
+  const normalized = String(storedName || '').trim();
+  if (!normalized) return;
+  deleteStoredFile(normalized).catch(() => {});
+}
+
+async function sendStoredAsset(res, storedName, options = {}) {
+  try {
+    await sendStoredFile(res, storedName, options);
+  } catch (error) {
+    if (isStorageNotFoundError(error)) {
+      if (!res.headersSent) {
+        res.status(404).json({ error: options.missingMessage || 'File not found.' });
+      }
+      return;
+    }
+    throw error;
+  }
+}
 
 function initDatabase() {
   db.exec(`
@@ -4281,6 +4334,7 @@ function logAdminAction(adminUserId, action, details = null) {
 }
 
 function seedAdminIfMissing() {
+  if (!ADMIN_EMAIL || !ADMIN_PASSWORD) return;
   const existingAdmin = db.prepare("SELECT id FROM users WHERE role = 'admin' LIMIT 1").get();
   if (existingAdmin) return;
 
@@ -4300,9 +4354,9 @@ function seedAdminIfMissing() {
 function seedScopedPortalUserIfMissing(email, scope, name) {
   const normalizedEmail = String(email || '').trim().toLowerCase();
   const normalizedScope = normalizeAdminScope(scope);
-  if (!normalizedEmail || normalizedScope === 'full') return;
+  if (!normalizedEmail || normalizedScope === 'full' || !SCOPED_PORTAL_PASSCODE) return;
 
-  const defaultPasscode = '1234';
+  const defaultPasscode = SCOPED_PORTAL_PASSCODE;
   const defaultPasscodeRecord = hashPassword(defaultPasscode);
 
   const existing = db
@@ -5311,7 +5365,7 @@ app.post('/api/portal/onboarding/employees/:employeeId/background-document', aut
     });
   }
 
-  upload.single('document')(req, res, (err) => {
+  upload.single('document')(req, res, async (err) => {
     if (err) {
       return res.status(400).json({ error: err.message || 'Failed to upload background document.' });
     }
@@ -5320,40 +5374,47 @@ app.post('/api/portal/onboarding/employees/:employeeId/background-document', aut
       return res.status(400).json({ error: 'No background file uploaded.' });
     }
 
-    const info = db
-      .prepare(
-        `INSERT INTO employee_documents
-          (userId, applicationId, documentType, originalName, storedName, mimeType, fileSize, expirationDate, documentStatus, uploadedByUserId, uploadedByRole)
-         VALUES (?, NULL, 'background_check', ?, ?, ?, ?, NULL, 'approved', ?, 'admin')`
-      )
-      .run(employeeId, req.file.originalname, req.file.filename, req.file.mimetype, req.file.size, req.auth.id);
+    try {
+      await persistUploadedFile(req.file, 'employee-documents');
+      const info = db
+        .prepare(
+          `INSERT INTO employee_documents
+            (userId, applicationId, documentType, originalName, storedName, mimeType, fileSize, expirationDate, documentStatus, uploadedByUserId, uploadedByRole)
+           VALUES (?, NULL, 'background_check', ?, ?, ?, ?, NULL, 'approved', ?, 'admin')`
+        )
+        .run(employeeId, req.file.originalname, req.file.filename, req.file.mimetype, req.file.size, req.auth.id);
 
-    const newStatus = checkAndAutoActivateEmployee(employeeId, req.auth.id);
+      const newStatus = checkAndAutoActivateEmployee(employeeId, req.auth.id);
 
-    runAsyncTask('notify_employee_background_document_onboarding', () =>
-      Promise.allSettled([
-        Promise.resolve(createPortalNotification({
-          userId: employeeId,
-          actorUserId: req.auth.id,
-          category: 'document',
-          title: 'Background Document Uploaded',
-          body: req.auth.role === 'admin' 
-            ? 'An administrator uploaded your background check document.'
-            : 'An onboarding staff member uploaded your background check document.',
-          url: buildPortalPath('/portal-employee', { task: 'employee-documents' }),
-          metadata: { documentId: Number(info.lastInsertRowid), documentType: 'background_check' },
-          syncDomains: ['employee-dashboard', 'documents'],
-        })),
-      ])
-    );
+      runAsyncTask('notify_employee_background_document_onboarding', () =>
+        Promise.allSettled([
+          Promise.resolve(createPortalNotification({
+            userId: employeeId,
+            actorUserId: req.auth.id,
+            category: 'document',
+            title: 'Background Document Uploaded',
+            body: req.auth.role === 'admin' 
+              ? 'An administrator uploaded your background check document.'
+              : 'An onboarding staff member uploaded your background check document.',
+            url: buildPortalPath('/portal-employee', { task: 'employee-documents' }),
+            metadata: { documentId: Number(info.lastInsertRowid), documentType: 'background_check' },
+            syncDomains: ['employee-dashboard', 'documents'],
+          })),
+        ])
+      );
 
-    emitDomainSyncToAdmins(['onboarding', 'full'], ['admin-dashboard', 'documents']);
+      emitDomainSyncToAdmins(['onboarding', 'full'], ['admin-dashboard', 'documents']);
 
-    return res.status(201).json({
-      id: info.lastInsertRowid,
-      fileUrl: `/api/portal/documents/${info.lastInsertRowid}/file`,
-      employeeOnboardingStatus: newStatus,
-    });
+      return res.status(201).json({
+        id: info.lastInsertRowid,
+        fileUrl: `/api/portal/documents/${info.lastInsertRowid}/file`,
+        employeeOnboardingStatus: newStatus,
+      });
+    } catch (error) {
+      discardUploadedFile(req.file);
+      logCaughtException('onboarding background document upload', error, { employeeId, actorUserId: req.auth.id });
+      return res.status(500).json({ error: 'Failed to store background document.' });
+    }
   });
 });
 
@@ -5423,7 +5484,7 @@ app.get('/api/portal/contracts/dashboard', authGuard(['admin']), (req, res) => {
   return res.json({ user: sanitizeUser(req.auth), clients, contracts, bank });
 });
 
-app.get('/api/portal/contracts/bank/:id/file', authGuard(['admin']), (req, res) => {
+app.get('/api/portal/contracts/bank/:id/file', authGuard(['admin']), async (req, res) => {
   if (!hasAdminScopeAccess(req.auth, ['contracts'])) {
     return res.status(403).json({ error: 'Forbidden for this portal scope.' });
   }
@@ -5432,28 +5493,25 @@ app.get('/api/portal/contracts/bank/:id/file', authGuard(['admin']), (req, res) 
   if (!Number.isInteger(bankId) || bankId < 1) return res.status(400).json({ error: 'Invalid id.' });
   const entry = db.prepare('SELECT * FROM contract_bank WHERE id = ?').get(bankId);
   if (!entry) return res.status(404).json({ error: 'Not found.' });
-  const fullPath = resolveStoredFilePath(entry.storedName);
-  if (!fs.existsSync(fullPath)) return res.status(404).json({ error: 'File missing from storage.' });
-  return res.download(fullPath, entry.originalName || 'Contract.pdf');
+  return sendStoredAsset(res, entry.storedName, {
+    contentType: entry.mimeType,
+    disposition: 'attachment',
+    downloadName: entry.originalName || 'Contract.pdf',
+    missingMessage: 'File missing from storage.',
+  });
 });
 
 app.post('/api/portal/contracts/send', authGuard(['admin']), upload.array('contract', 20), (req, res) => {
   if (!hasAdminScopeAccess(req.auth, ['contracts'])) {
     const files = Array.isArray(req.files) ? req.files : [];
-    files.forEach((file) => {
-      if (file && file.path) fs.unlink(file.path, () => {});
-    });
+    discardUploadedFiles(files);
     return res.status(403).json({ error: 'Forbidden for this portal scope.' });
   }
 
   const industryTrack = String(req.body && req.body.industryTrack || '').trim().toLowerCase();
   const jobsiteUserId = Number(req.body && req.body.jobsiteUserId);
   const files = Array.isArray(req.files) ? req.files : [];
-  const removeUploadedFiles = () => {
-    files.forEach((file) => {
-      if (file && file.path) fs.unlink(file.path, () => {});
-    });
-  };
+  const removeUploadedFiles = () => discardUploadedFiles(files);
 
   if (!files.length) {
     return res.status(400).json({ error: 'Contract PDF is required.' });
@@ -5524,30 +5582,36 @@ app.post('/api/portal/contracts/send', authGuard(['admin']), upload.array('contr
     });
   });
 
-  try {
-    insertMany(files);
-  } catch (_error) {
-    removeUploadedFiles();
-    throw _error;
-  }
+  persistUploadedFiles(files, 'contracts').then(() => {
+    try {
+      insertMany(files);
+    } catch (_error) {
+      removeUploadedFiles();
+      throw _error;
+    }
 
-  createdIds.forEach((contractId, index) => {
-    const file = files[index];
-    runAsyncTask('notify_jobsite_contract_available_from_contracts_portal', () =>
-      notifyJobsiteAboutContractAvailable(jobsiteUserId, contractId, file ? file.originalname : 'Contract', industryTrack, req.auth.id)
+    createdIds.forEach((contractId, index) => {
+      const file = files[index];
+      runAsyncTask('notify_jobsite_contract_available_from_contracts_portal', () =>
+        notifyJobsiteAboutContractAvailable(jobsiteUserId, contractId, file ? file.originalname : 'Contract', industryTrack, req.auth.id)
+      );
+    });
+
+    notifyContractsPortalActivityToAdmins(
+      req.auth.id,
+      'Contracts sent to client',
+      `${createdIds.length} contract(s) were sent to client #${jobsiteUserId}.`,
+      { jobsiteUserId, count: createdIds.length, industryTrack }
     );
+
+    emitContractsDomainSyncToAdmins();
+
+    return res.status(201).json({ id: createdIds[0] || null, ids: createdIds, created: true, count: createdIds.length });
+  }).catch((error) => {
+    removeUploadedFiles();
+    logCaughtException('contracts portal upload', error, { actorUserId: req.auth.id, jobsiteUserId, industryTrack });
+    return res.status(500).json({ error: 'Failed to store contract upload.' });
   });
-
-  notifyContractsPortalActivityToAdmins(
-    req.auth.id,
-    'Contracts sent to client',
-    `${createdIds.length} contract(s) were sent to client #${jobsiteUserId}.`,
-    { jobsiteUserId, count: createdIds.length, industryTrack }
-  );
-
-  emitContractsDomainSyncToAdmins();
-
-  return res.status(201).json({ id: createdIds[0] || null, ids: createdIds, created: true, count: createdIds.length });
 });
 
 app.post('/api/portal/contracts/send-bank/:id', authGuard(['admin']), (req, res) => {
@@ -6669,7 +6733,7 @@ app.get('/api/users/:id', authGuard(['admin']), (req, res) => {
   return res.json({ user: { ...user, profile } });
 });
 
-app.get('/api/portal/documents/:id/file', authGuard(), (req, res) => {
+app.get('/api/portal/documents/:id/file', authGuard(), async (req, res) => {
   const docId = Number(req.params.id);
   if (!Number.isInteger(docId) || docId < 1) {
     return res.status(400).json({ error: 'Invalid document id.' });
@@ -6700,9 +6764,11 @@ app.get('/api/portal/documents/:id/file', authGuard(), (req, res) => {
 
   // Admin can access all employee documents.
   if (req.auth.role === 'admin') {
-    const fullPath = resolveStoredFilePath(doc.storedName);
-    if (!fs.existsSync(fullPath)) return res.status(404).json({ error: 'File not found.' });
-    return res.sendFile(fullPath);
+    return sendStoredAsset(res, doc.storedName, {
+      contentType: doc.mimeType,
+      disposition: 'inline',
+      downloadName: doc.originalName || 'document',
+    });
   }
 
   // Employee can access only their own documents.
@@ -6713,9 +6779,11 @@ app.get('/api/portal/documents/:id/file', authGuard(), (req, res) => {
     if (String(doc.documentType || '').toLowerCase() === 'background_check' && String(doc.uploadedByRole || '').toLowerCase() !== 'admin') {
       return res.status(403).json({ error: 'Background document must be uploaded by admin.' });
     }
-    const fullPath = resolveStoredFilePath(doc.storedName);
-    if (!fs.existsSync(fullPath)) return res.status(404).json({ error: 'File not found.' });
-    return res.sendFile(fullPath);
+    return sendStoredAsset(res, doc.storedName, {
+      contentType: doc.mimeType,
+      disposition: 'inline',
+      downloadName: doc.originalName || 'document',
+    });
   }
 
   // Jobsite can access uploaded docs for assigned workers, excluding SSN/work authorization.
@@ -6774,9 +6842,11 @@ app.get('/api/portal/documents/:id/file', authGuard(), (req, res) => {
       return res.status(403).json({ error: 'Document type is not available for this client profile.' });
     }
 
-    const fullPath = resolveStoredFilePath(doc.storedName);
-    if (!fs.existsSync(fullPath)) return res.status(404).json({ error: 'File not found.' });
-    return res.sendFile(fullPath);
+    return sendStoredAsset(res, doc.storedName, {
+      contentType: doc.mimeType,
+      disposition: 'inline',
+      downloadName: doc.originalName || 'document',
+    });
   }
 
   // Onboarding can access employee documents, excluding SSN/work authorization.
@@ -6785,9 +6855,11 @@ app.get('/api/portal/documents/:id/file', authGuard(), (req, res) => {
       return res.status(403).json({ error: 'Social Security documents are not available through this role.' });
     }
 
-    const fullPath = resolveStoredFilePath(doc.storedName);
-    if (!fs.existsSync(fullPath)) return res.status(404).json({ error: 'File not found.' });
-    return res.sendFile(fullPath);
+    return sendStoredAsset(res, doc.storedName, {
+      contentType: doc.mimeType,
+      disposition: 'inline',
+      downloadName: doc.originalName || 'document',
+    });
   }
 
   return res.status(403).json({ error: 'Not authorized for this document.' });
@@ -7515,7 +7587,7 @@ app.delete('/api/notifications/subscribe', authGuard(), (req, res) => {
 });
 
 app.post('/api/portal/employee/documents', authGuard(['employee']), (req, res) => {
-  upload.single('document')(req, res, (err) => {
+  upload.single('document')(req, res, async (err) => {
     if (err) {
       return res.status(400).json({ error: err.message || 'Failed to upload document.' });
     }
@@ -7532,24 +7604,24 @@ app.post('/api/portal/employee/documents', authGuard(['employee']), (req, res) =
     const ssnConfirm = String(req.body.ssnConfirm || '').trim().toLowerCase();
 
     if (applicationId !== null && (!Number.isInteger(applicationId) || applicationId < 1)) {
-      fs.unlink(req.file.path, () => {});
+      discardUploadedFile(req.file);
       return res.status(400).json({ error: 'Invalid applicationId value.' });
     }
 
     if (!ALLOWED_EMPLOYEE_DOCUMENT_TYPES.has(documentType)) {
-      fs.unlink(req.file.path, () => {});
+      discardUploadedFile(req.file);
       return res.status(400).json({ error: 'Invalid document type.' });
     }
 
     if (ADMIN_ONLY_DOCUMENT_TYPES.has(documentType)) {
-      fs.unlink(req.file.path, () => {});
+      discardUploadedFile(req.file);
       return res.status(403).json({ error: 'Background documents can only be uploaded by an admin.' });
     }
 
     if (documentType === 'tuberculosis_screening_tb') {
       const employeeTrack = getEmployeeIndustryTrack(req.auth.id, req.auth.email);
       if (employeeTrack !== 'healthcare') {
-        fs.unlink(req.file.path, () => {});
+        discardUploadedFile(req.file);
         return res.status(403).json({ error: 'Tuberculosis screening (TB) is only required for healthcare worker profiles.' });
       }
     }
@@ -7559,12 +7631,12 @@ app.post('/api/portal/employee/documents', authGuard(['employee']), (req, res) =
       const confirmed = ssnConfirm === 'true' || ssnConfirm === '1' || ssnConfirm === 'yes' || ssnConfirm === 'on';
 
       if (!formattedSsn) {
-        fs.unlink(req.file.path, () => {});
+        discardUploadedFile(req.file);
         return res.status(400).json({ error: 'A valid Social Security number is required for verification before uploading this document.' });
       }
 
       if (!confirmed) {
-        fs.unlink(req.file.path, () => {});
+        discardUploadedFile(req.file);
         return res.status(400).json({ error: 'You must confirm the Social Security number acknowledgment before uploading this document.' });
       }
 
@@ -7573,7 +7645,7 @@ app.post('/api/portal/employee/documents', authGuard(['employee']), (req, res) =
 
     if (EXPIRATION_REQUIRED_DOCUMENT_TYPES.has(documentType)) {
       if (!expirationDateRaw || !/^\d{4}-\d{2}-\d{2}$/.test(expirationDateRaw)) {
-        fs.unlink(req.file.path, () => {});
+        discardUploadedFile(req.file);
         return res.status(400).json({ error: 'This document type requires a valid expiration date (YYYY-MM-DD).' });
       }
     }
@@ -7584,7 +7656,7 @@ app.post('/api/portal/employee/documents', authGuard(['employee']), (req, res) =
         .get(applicationId, req.auth.id, req.auth.email);
 
       if (!appRow) {
-        fs.unlink(req.file.path, () => {});
+        discardUploadedFile(req.file);
         return res.status(404).json({ error: 'Application not found for this employee.' });
       }
     }
@@ -7595,30 +7667,37 @@ app.post('/api/portal/employee/documents', authGuard(['employee']), (req, res) =
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
 
-    const info = insert.run(
-      req.auth.id,
-      applicationId,
-      documentType || 'resume',
-      req.file.originalname,
-      req.file.filename,
-      req.file.mimetype,
-      req.file.size,
-      expirationDateRaw,
-      'pending',
-      req.auth.id,
-      'employee'
-    );
+    try {
+      await persistUploadedFile(req.file, 'employee-documents');
+      const info = insert.run(
+        req.auth.id,
+        applicationId,
+        documentType || 'resume',
+        req.file.originalname,
+        req.file.filename,
+        req.file.mimetype,
+        req.file.size,
+        expirationDateRaw,
+        'pending',
+        req.auth.id,
+        'employee'
+      );
 
-    runAsyncTask('notify_admin_document', () =>
-      notifyAdminsAboutDocumentUpload(req.auth.id, info.lastInsertRowid, documentType)
-    );
+      runAsyncTask('notify_admin_document', () =>
+        notifyAdminsAboutDocumentUpload(req.auth.id, info.lastInsertRowid, documentType)
+      );
 
-    emitDomainSyncToAdmins(['onboarding', 'full'], ['admin-dashboard', 'documents']);
+      emitDomainSyncToAdmins(['onboarding', 'full'], ['admin-dashboard', 'documents']);
 
-    return res.status(201).json({
-      id: info.lastInsertRowid,
-      fileUrl: `/api/portal/documents/${info.lastInsertRowid}/file`,
-    });
+      return res.status(201).json({
+        id: info.lastInsertRowid,
+        fileUrl: `/api/portal/documents/${info.lastInsertRowid}/file`,
+      });
+    } catch (error) {
+      discardUploadedFile(req.file);
+      logCaughtException('employee document upload', error, { userId: req.auth.id, documentType });
+      return res.status(500).json({ error: 'Failed to store document.' });
+    }
   });
 });
 
@@ -7666,7 +7745,7 @@ app.post('/api/admin/employees/:employeeId/background-document', authGuard(['adm
     });
   }
 
-  upload.single('document')(req, res, (err) => {
+  upload.single('document')(req, res, async (err) => {
     if (err) {
       return res.status(400).json({ error: err.message || 'Failed to upload background document.' });
     }
@@ -7675,49 +7754,56 @@ app.post('/api/admin/employees/:employeeId/background-document', authGuard(['adm
       return res.status(400).json({ error: 'No background file uploaded.' });
     }
 
-    const info = db
-      .prepare(
-        `INSERT INTO employee_documents
-          (userId, applicationId, documentType, originalName, storedName, mimeType, fileSize, expirationDate, documentStatus, uploadedByUserId, uploadedByRole)
-         VALUES (?, NULL, 'background_check', ?, ?, ?, ?, NULL, 'approved', ?, 'admin')`
-      )
-      .run(
-        employeeId,
-        req.file.originalname,
-        req.file.filename,
-        req.file.mimetype,
-        req.file.size,
-        req.auth.id
+    try {
+      await persistUploadedFile(req.file, 'employee-documents');
+      const info = db
+        .prepare(
+          `INSERT INTO employee_documents
+            (userId, applicationId, documentType, originalName, storedName, mimeType, fileSize, expirationDate, documentStatus, uploadedByUserId, uploadedByRole)
+           VALUES (?, NULL, 'background_check', ?, ?, ?, ?, NULL, 'approved', ?, 'admin')`
+        )
+        .run(
+          employeeId,
+          req.file.originalname,
+          req.file.filename,
+          req.file.mimetype,
+          req.file.size,
+          req.auth.id
+        );
+
+      logAdminAction(
+        req.auth.id,
+        'employee_background_document_uploaded',
+        JSON.stringify({ employeeId, documentId: info.lastInsertRowid })
       );
 
-    logAdminAction(
-      req.auth.id,
-      'employee_background_document_uploaded',
-      JSON.stringify({ employeeId, documentId: info.lastInsertRowid })
-    );
+      const newStatus = checkAndAutoActivateEmployee(employeeId, req.auth.id);
 
-    const newStatus = checkAndAutoActivateEmployee(employeeId, req.auth.id);
+      runAsyncTask('notify_employee_background_document', () =>
+        Promise.allSettled([
+          Promise.resolve(createPortalNotification({
+            userId: employeeId,
+            actorUserId: req.auth.id,
+            category: 'document',
+            title: 'Background Document Uploaded',
+            body: 'An administrator uploaded your background check document.',
+            url: buildPortalPath('/portal-employee', { task: 'employee-documents' }),
+            metadata: { documentId: Number(info.lastInsertRowid), documentType: 'background_check' },
+            syncDomains: ['employee-dashboard', 'documents'],
+          })),
+        ])
+      );
 
-    runAsyncTask('notify_employee_background_document', () =>
-      Promise.allSettled([
-        Promise.resolve(createPortalNotification({
-          userId: employeeId,
-          actorUserId: req.auth.id,
-          category: 'document',
-          title: 'Background Document Uploaded',
-          body: 'An administrator uploaded your background check document.',
-          url: buildPortalPath('/portal-employee', { task: 'employee-documents' }),
-          metadata: { documentId: Number(info.lastInsertRowid), documentType: 'background_check' },
-          syncDomains: ['employee-dashboard', 'documents'],
-        })),
-      ])
-    );
-
-    return res.status(201).json({
-      id: info.lastInsertRowid,
-      fileUrl: `/api/portal/documents/${info.lastInsertRowid}/file`,
-      employeeOnboardingStatus: newStatus,
-    });
+      return res.status(201).json({
+        id: info.lastInsertRowid,
+        fileUrl: `/api/portal/documents/${info.lastInsertRowid}/file`,
+        employeeOnboardingStatus: newStatus,
+      });
+    } catch (error) {
+      discardUploadedFile(req.file);
+      logCaughtException('admin background document upload', error, { employeeId, actorUserId: req.auth.id });
+      return res.status(500).json({ error: 'Failed to store background document.' });
+    }
   });
 });
 
@@ -8269,14 +8355,7 @@ app.delete('/api/portal/employee/applications/:id', authGuard(['employee']), (re
 
   docs.forEach((doc) => {
     if (!doc || !doc.storedName) return;
-    const fullPath = resolveStoredFilePath(doc.storedName);
-    try {
-      if (fs.existsSync(fullPath)) {
-        fs.unlinkSync(fullPath);
-      }
-    } catch (_error) {
-      // Ignore orphaned-file cleanup errors after successful delete.
-    }
+    removeStoredFileLater(doc.storedName);
   });
 
   return res.json({ withdrawn: true, id: applicationId });
@@ -8315,14 +8394,7 @@ app.delete('/api/portal/employee/account', authGuard(['employee']), (req, res) =
   for (const row of documentRows) {
     const storedName = String(row && row.storedName ? row.storedName : '').trim();
     if (!storedName) continue;
-    const fullPath = resolveStoredFilePath(storedName);
-    if (fs.existsSync(fullPath)) {
-      try {
-        fs.unlinkSync(fullPath);
-      } catch (_error) {
-        // Ignore file cleanup errors after account deletion succeeds.
-      }
-    }
+    removeStoredFileLater(storedName);
   }
 
   return res.json({ deleted: true });
@@ -8460,7 +8532,7 @@ app.post('/api/shifts/:id/decline', authGuard(['employee']), (req, res) => {
 });
 
 app.post('/api/shifts/assignments/:id/withdraw', authGuard(['employee']), (req, res) => {
-  upload.single('doctorNote')(req, res, (err) => {
+  upload.single('doctorNote')(req, res, async (err) => {
     if (err) {
       return res.status(400).json({ error: err.message || 'Failed to upload doctor note.' });
     }
@@ -8472,26 +8544,26 @@ app.post('/api/shifts/assignments/:id/withdraw', authGuard(['employee']), (req, 
     const cancellationType = cancellationTypeRaw === 'medical' ? 'medical' : cancellationTypeRaw === 'non_medical' ? 'non_medical' : '';
 
     if (!Number.isInteger(assignmentId) || assignmentId < 1) {
-      if (req.file) fs.unlink(req.file.path, () => {});
+      if (req.file) discardUploadedFile(req.file);
       return res.status(400).json({ error: 'Invalid assignment id.' });
     }
     if (!reason) {
-      if (req.file) fs.unlink(req.file.path, () => {});
+      if (req.file) discardUploadedFile(req.file);
       return res.status(400).json({ error: 'A cancellation reason is required.' });
     }
     if (!['medical', 'non_medical'].includes(cancellationType)) {
-      if (req.file) fs.unlink(req.file.path, () => {});
+      if (req.file) discardUploadedFile(req.file);
       return res.status(400).json({ error: 'Cancellation type must be medical or non_medical.' });
     }
 
     if (!requireCredentialForUser(res, req.auth.id, credential, 'Password or 4-digit passcode is required to withdraw a shift.')) {
-      if (req.file) fs.unlink(req.file.path, () => {});
+      if (req.file) discardUploadedFile(req.file);
       return;
     }
 
     if (getEmployeeOnboardingStatus(req.auth.id) !== 'active') {
       const shiftAccess = getEmployeeShiftAccessState(req.auth.id, req.auth.email);
-      if (req.file) fs.unlink(req.file.path, () => {});
+      if (req.file) discardUploadedFile(req.file);
       return res.status(403).json({ error: shiftAccess.message || 'Complete onboarding before withdrawing shifts.' });
     }
 
@@ -8511,14 +8583,14 @@ app.post('/api/shifts/assignments/:id/withdraw', authGuard(['employee']), (req, 
       .get(assignmentId, req.auth.id);
 
     if (!assignment || !['assigned', 'approved'].includes(String(assignment.status || '').toLowerCase())) {
-      if (req.file) fs.unlink(req.file.path, () => {});
+      if (req.file) discardUploadedFile(req.file);
       return res.status(404).json({ error: 'Assigned shift not found.' });
     }
 
     const shiftStart = parseShiftStartFromSchedule(assignment.schedule);
     const now = new Date();
     if (shiftStart && now.getTime() >= shiftStart.getTime()) {
-      if (req.file) fs.unlink(req.file.path, () => {});
+      if (req.file) discardUploadedFile(req.file);
       return res.status(400).json({ error: 'This shift has already started. Employees can no longer cancel after start time.' });
     }
 
@@ -8531,21 +8603,23 @@ app.post('/api/shifts/assignments/:id/withdraw', authGuard(['employee']), (req, 
     }
 
     let doctorNoteDocumentId = null;
-    if (req.file) {
-      const docInfo = db.prepare(
-        `INSERT INTO employee_documents
-          (userId, applicationId, documentType, originalName, storedName, mimeType, fileSize, expirationDate, documentStatus, uploadedByUserId, uploadedByRole)
-         VALUES (?, NULL, 'doctor_note', ?, ?, ?, ?, NULL, 'pending', ?, 'employee')`
-      ).run(
-        req.auth.id,
-        req.file.originalname,
-        req.file.filename,
-        req.file.mimetype,
-        req.file.size,
-        req.auth.id
-      );
-      doctorNoteDocumentId = Number(docInfo.lastInsertRowid);
-    }
+    try {
+      if (req.file) {
+        await persistUploadedFile(req.file, 'employee-documents');
+        const docInfo = db.prepare(
+          `INSERT INTO employee_documents
+            (userId, applicationId, documentType, originalName, storedName, mimeType, fileSize, expirationDate, documentStatus, uploadedByUserId, uploadedByRole)
+           VALUES (?, NULL, 'doctor_note', ?, ?, ?, ?, NULL, 'pending', ?, 'employee')`
+        ).run(
+          req.auth.id,
+          req.file.originalname,
+          req.file.filename,
+          req.file.mimetype,
+          req.file.size,
+          req.auth.id
+        );
+        doctorNoteDocumentId = Number(docInfo.lastInsertRowid);
+      }
 
     const excuseInfo = db.prepare(
       `INSERT INTO employee_excuse_forms
@@ -8610,7 +8684,12 @@ app.post('/api/shifts/assignments/:id/withdraw', authGuard(['employee']), (req, 
       });
     });
 
-    res.json({ withdrawn: true, id: assignmentId, excuseFormId, requiresDoctorNote });
+      return res.json({ withdrawn: true, id: assignmentId, excuseFormId, requiresDoctorNote });
+    } catch (error) {
+      if (req.file) discardUploadedFile(req.file);
+      logCaughtException('shift withdrawal doctor note upload', error, { assignmentId, employeeUserId: req.auth.id });
+      return res.status(500).json({ error: 'Failed to store doctor note.' });
+    }
   });
 });
 
@@ -8652,7 +8731,7 @@ app.post('/api/shifts/assignments/:id/withdraw', authGuard(['employee']), (req, 
   });
 
   app.post('/api/shifts/assignments/:id/ncns-excuse', authGuard(['employee']), (req, res) => {
-    upload.single('doctorNote')(req, res, (uploadErr) => {
+    upload.single('doctorNote')(req, res, async (uploadErr) => {
       if (uploadErr) {
         return res.status(400).json({ error: uploadErr.message || 'Failed to upload file.' });
       }
@@ -8664,22 +8743,22 @@ app.post('/api/shifts/assignments/:id/withdraw', authGuard(['employee']), (req, 
       const doctorNoteAcknowledged = (req.body && req.body.doctorNoteAcknowledged) === 'true' || (req.body && req.body.doctorNoteAcknowledged) === '1' ? 1 : 0;
 
       if (!Number.isInteger(assignmentId) || assignmentId < 1) {
-        if (req.file) fs.unlink(req.file.path, () => {});
+        if (req.file) discardUploadedFile(req.file);
         return res.status(400).json({ error: 'Invalid assignment id.' });
       }
       if (!['medical', 'non_medical'].includes(cancellationType)) {
-        if (req.file) fs.unlink(req.file.path, () => {});
+        if (req.file) discardUploadedFile(req.file);
         return res.status(400).json({ error: 'Documentation type must be medical or non_medical.' });
       }
       if (!reason && cancellationType === 'non_medical') {
-        if (req.file) fs.unlink(req.file.path, () => {});
+        if (req.file) discardUploadedFile(req.file);
         return res.status(400).json({ error: 'A reason is required for non-medical no-call-no-show documentation.' });
       }
       if (cancellationType === 'medical' && !req.file) {
         return res.status(400).json({ error: 'A doctor\'s note document is required for medical no-call-no-show documentation.' });
       }
       if (cancellationType === 'medical' && !doctorNoteAcknowledged) {
-        if (req.file) fs.unlink(req.file.path, () => {});
+        if (req.file) discardUploadedFile(req.file);
         return res.status(400).json({ error: 'You must acknowledge that the uploaded document is a valid doctor\'s note.' });
       }
 
@@ -8692,7 +8771,7 @@ app.post('/api/shifts/assignments/:id/withdraw', authGuard(['employee']), (req, 
       ).get(assignmentId, req.auth.id);
 
       if (!assignment || String(assignment.status).toLowerCase() !== 'no_call_no_show') {
-        if (req.file) fs.unlink(req.file.path, () => {});
+        if (req.file) discardUploadedFile(req.file);
         return res.status(404).json({ error: 'No-call-no-show assignment not found.' });
       }
 
@@ -8700,7 +8779,7 @@ app.post('/api/shifts/assignments/:id/withdraw', authGuard(['employee']), (req, 
       if (assignment.excuseFormId) {
         const existingForm = db.prepare('SELECT id, submittedAsNcns FROM employee_excuse_forms WHERE id = ?').get(assignment.excuseFormId);
         if (existingForm && existingForm.submittedAsNcns) {
-          if (req.file) fs.unlink(req.file.path, () => {});
+          if (req.file) discardUploadedFile(req.file);
           return res.status(409).json({ error: 'Documentation has already been submitted for this absence and cannot be changed.' });
         }
       }
@@ -8709,24 +8788,26 @@ app.post('/api/shifts/assignments/:id/withdraw', authGuard(['employee']), (req, 
       const shiftEnd = parseShiftEndFromSchedule(assignment.schedule);
       const now = new Date();
       if (!shiftEnd) {
-        if (req.file) fs.unlink(req.file.path, () => {});
+        if (req.file) discardUploadedFile(req.file);
         return res.status(400).json({ error: 'Unable to determine shift end time.' });
       }
       const windowEnd = new Date(shiftEnd.getTime() + 24 * 60 * 60 * 1000);
       if (now > windowEnd) {
-        if (req.file) fs.unlink(req.file.path, () => {});
+        if (req.file) discardUploadedFile(req.file);
         return res.status(410).json({ error: 'The 24-hour documentation window has expired. No further documentation can be submitted for this absence.' });
       }
 
       let doctorNoteDocumentId = null;
-      if (req.file) {
-        const docInfo = db.prepare(
-          `INSERT INTO employee_documents
-            (userId, applicationId, documentType, originalName, storedName, mimeType, fileSize, expirationDate, documentStatus, uploadedByUserId, uploadedByRole)
-           VALUES (?, NULL, 'doctor_note', ?, ?, ?, ?, NULL, 'pending', ?, 'employee')`
-        ).run(req.auth.id, req.file.originalname, req.file.filename, req.file.mimetype, req.file.size, req.auth.id);
-        doctorNoteDocumentId = Number(docInfo.lastInsertRowid);
-      }
+      try {
+        if (req.file) {
+          await persistUploadedFile(req.file, 'employee-documents');
+          const docInfo = db.prepare(
+            `INSERT INTO employee_documents
+              (userId, applicationId, documentType, originalName, storedName, mimeType, fileSize, expirationDate, documentStatus, uploadedByUserId, uploadedByRole)
+             VALUES (?, NULL, 'doctor_note', ?, ?, ?, ?, NULL, 'pending', ?, 'employee')`
+          ).run(req.auth.id, req.file.originalname, req.file.filename, req.file.mimetype, req.file.size, req.auth.id);
+          doctorNoteDocumentId = Number(docInfo.lastInsertRowid);
+        }
 
       const excuseInfo = db.prepare(
         `INSERT INTO employee_excuse_forms
@@ -8773,7 +8854,12 @@ app.post('/api/shifts/assignments/:id/withdraw', authGuard(['employee']), (req, 
         });
       }
 
-      res.json({ submitted: true, excuseFormId });
+        return res.json({ submitted: true, excuseFormId });
+      } catch (error) {
+        if (req.file) discardUploadedFile(req.file);
+        logCaughtException('ncns doctor note upload', error, { assignmentId, employeeUserId: req.auth.id });
+        return res.status(500).json({ error: 'Failed to store supporting documentation.' });
+      }
     });
   });
   // ─────────────────────────────────────────────────────────────────────────────
@@ -9982,14 +10068,7 @@ app.delete('/api/admin/users/:id', authGuard(['admin']), (req, res) => {
 
   docs.forEach((doc) => {
     if (!doc || !doc.storedName) return;
-    const fullPath = resolveStoredFilePath(doc.storedName);
-    try {
-      if (fs.existsSync(fullPath)) {
-        fs.unlinkSync(fullPath);
-      }
-    } catch (_error) {
-      // Ignore orphaned-file cleanup errors after successful DB delete.
-    }
+    removeStoredFileLater(doc.storedName);
   });
 
   logAdminAction(
@@ -10731,7 +10810,7 @@ app.get('/api/admin/contract-bank', authGuard(['admin']), (req, res) => {
 app.post('/api/admin/contract-bank', authGuard(['admin']), upload.array('contract', 20), (req, res) => {
   const industryTrack = String(req.body && req.body.industryTrack || '').trim().toLowerCase();
   const files = Array.isArray(req.files) ? req.files : [];
-  const removeFiles = () => files.forEach((f) => { if (f && f.path) fs.unlink(f.path, () => {}); });
+  const removeFiles = () => discardUploadedFiles(files);
 
   if (!files.length) return res.status(400).json({ error: 'At least one PDF is required.' });
   if (!['warehouse', 'healthcare'].includes(industryTrack)) {
@@ -10750,19 +10829,33 @@ app.post('/api/admin/contract-bank', authGuard(['admin']), upload.array('contrac
       ids.push(Number(result.lastInsertRowid));
     });
   });
-  try { insertMany(files); } catch (err) { removeFiles(); throw err; }
-  emitContractsDomainSyncToAdmins();
-  return res.status(201).json({ ids, count: ids.length, created: true });
+  persistUploadedFiles(files, 'contract-bank').then(() => {
+    try {
+      insertMany(files);
+    } catch (err) {
+      removeFiles();
+      throw err;
+    }
+    emitContractsDomainSyncToAdmins();
+    return res.status(201).json({ ids, count: ids.length, created: true });
+  }).catch((error) => {
+    removeFiles();
+    logCaughtException('contract bank upload', error, { actorUserId: req.auth.id, industryTrack });
+    return res.status(500).json({ error: 'Failed to store contract bank upload.' });
+  });
 });
 
-app.get('/api/contract-bank/:id/file', authGuard(['admin']), (req, res) => {
+app.get('/api/contract-bank/:id/file', authGuard(['admin']), async (req, res) => {
   const bankId = Number(req.params.id);
   if (!Number.isInteger(bankId) || bankId < 1) return res.status(400).json({ error: 'Invalid id.' });
   const entry = db.prepare('SELECT * FROM contract_bank WHERE id = ?').get(bankId);
   if (!entry) return res.status(404).json({ error: 'Not found.' });
-  const fullPath = resolveStoredFilePath(entry.storedName);
-  if (!fs.existsSync(fullPath)) return res.status(404).json({ error: 'File missing from storage.' });
-  return res.download(fullPath, entry.originalName || 'Contract.pdf');
+  return sendStoredAsset(res, entry.storedName, {
+    contentType: entry.mimeType,
+    disposition: 'attachment',
+    downloadName: entry.originalName || 'Contract.pdf',
+    missingMessage: 'File missing from storage.',
+  });
 });
 
 app.post('/api/admin/contract-bank/:id/send', authGuard(['admin']), (req, res) => {
@@ -10801,8 +10894,7 @@ app.delete('/api/admin/contract-bank/:id', authGuard(['admin']), (req, res) => {
   // Only remove the physical file if no active contract references it
   const ref = db.prepare('SELECT COUNT(*) as n FROM contracts WHERE storedName = ?').get(entry.storedName);
   if (!ref || ref.n === 0) {
-    const fullPath = resolveStoredFilePath(entry.storedName);
-    if (fs.existsSync(fullPath)) fs.unlink(fullPath, () => {});
+    removeStoredFileLater(entry.storedName);
   }
   emitContractsDomainSyncToAdmins();
   return res.json({ deleted: true });
@@ -10830,7 +10922,7 @@ app.get('/api/admin/misc-docs/recipients', authGuard(['admin']), (req, res) => {
 app.post('/api/admin/misc-docs', authGuard(['admin']), upload.array('document', 20), (req, res) => {
   const description = String((req.body && req.body.description) || '').trim().slice(0, 255) || null;
   const files = Array.isArray(req.files) ? req.files : [];
-  const removeFiles = () => files.forEach((f) => { if (f && f.path) fs.unlink(f.path, () => {}); });
+  const removeFiles = () => discardUploadedFiles(files);
 
   if (!files.length) return res.status(400).json({ error: 'At least one file is required.' });
 
@@ -10845,19 +10937,33 @@ app.post('/api/admin/misc-docs', authGuard(['admin']), upload.array('document', 
       ids.push(Number(result.lastInsertRowid));
     });
   });
-  try { insertMany(files); } catch (err) { removeFiles(); throw err; }
-  emitContractsDomainSyncToAdmins();
-  return res.status(201).json({ ids, count: ids.length, created: true });
+  persistUploadedFiles(files, 'misc-docs').then(() => {
+    try {
+      insertMany(files);
+    } catch (err) {
+      removeFiles();
+      throw err;
+    }
+    emitContractsDomainSyncToAdmins();
+    return res.status(201).json({ ids, count: ids.length, created: true });
+  }).catch((error) => {
+    removeFiles();
+    logCaughtException('misc doc upload', error, { actorUserId: req.auth.id });
+    return res.status(500).json({ error: 'Failed to store document upload.' });
+  });
 });
 
-app.get('/api/misc-docs/:id/file', authGuard(['admin']), (req, res) => {
+app.get('/api/misc-docs/:id/file', authGuard(['admin']), async (req, res) => {
   const docId = Number(req.params.id);
   if (!Number.isInteger(docId) || docId < 1) return res.status(400).json({ error: 'Invalid id.' });
   const entry = db.prepare('SELECT * FROM misc_docs WHERE id = ?').get(docId);
   if (!entry) return res.status(404).json({ error: 'Not found.' });
-  const fullPath = resolveStoredFilePath(entry.storedName);
-  if (!fs.existsSync(fullPath)) return res.status(404).json({ error: 'File missing from storage.' });
-  return res.download(fullPath, entry.originalName || 'document');
+  return sendStoredAsset(res, entry.storedName, {
+    contentType: entry.mimeType,
+    disposition: 'attachment',
+    downloadName: entry.originalName || 'document',
+    missingMessage: 'File missing from storage.',
+  });
 });
 
 app.delete('/api/admin/misc-docs/:id', authGuard(['admin']), (req, res) => {
@@ -10866,8 +10972,7 @@ app.delete('/api/admin/misc-docs/:id', authGuard(['admin']), (req, res) => {
   const entry = db.prepare('SELECT * FROM misc_docs WHERE id = ?').get(docId);
   if (!entry) return res.status(404).json({ error: 'Not found.' });
   db.prepare('DELETE FROM misc_docs WHERE id = ?').run(docId);
-  const fullPath = resolveStoredFilePath(entry.storedName);
-  if (fs.existsSync(fullPath)) fs.unlink(fullPath, () => {});
+  removeStoredFileLater(entry.storedName);
   emitContractsDomainSyncToAdmins();
   return res.json({ deleted: true });
 });
@@ -10913,16 +11018,19 @@ app.get('/api/portal/employee/misc-docs', authGuard(['employee']), (req, res) =>
   return res.json({ data });
 });
 
-app.get('/api/portal/employee/misc-docs/:id/file', authGuard(['employee']), (req, res) => {
+app.get('/api/portal/employee/misc-docs/:id/file', authGuard(['employee']), async (req, res) => {
   const docId = Number(req.params.id);
   if (!Number.isInteger(docId) || docId < 1) return res.status(400).json({ error: 'Invalid id.' });
   const send = db.prepare('SELECT * FROM misc_doc_sends WHERE miscDocId = ? AND recipientUserId = ?').get(docId, req.auth.id);
   if (!send) return res.status(403).json({ error: 'Access denied.' });
   const entry = db.prepare('SELECT * FROM misc_docs WHERE id = ?').get(docId);
   if (!entry) return res.status(404).json({ error: 'Not found.' });
-  const fullPath = resolveStoredFilePath(entry.storedName);
-  if (!fs.existsSync(fullPath)) return res.status(404).json({ error: 'File missing from storage.' });
-  return res.download(fullPath, entry.originalName || 'document');
+  return sendStoredAsset(res, entry.storedName, {
+    contentType: entry.mimeType,
+    disposition: 'attachment',
+    downloadName: entry.originalName || 'document',
+    missingMessage: 'File missing from storage.',
+  });
 });
 
 app.get('/api/portal/jobsite/misc-docs', authGuard(['jobsite']), (req, res) => {
@@ -10937,16 +11045,19 @@ app.get('/api/portal/jobsite/misc-docs', authGuard(['jobsite']), (req, res) => {
   return res.json({ data });
 });
 
-app.get('/api/portal/jobsite/misc-docs/:id/file', authGuard(['jobsite']), (req, res) => {
+app.get('/api/portal/jobsite/misc-docs/:id/file', authGuard(['jobsite']), async (req, res) => {
   const docId = Number(req.params.id);
   if (!Number.isInteger(docId) || docId < 1) return res.status(400).json({ error: 'Invalid id.' });
   const send = db.prepare('SELECT * FROM misc_doc_sends WHERE miscDocId = ? AND recipientUserId = ?').get(docId, req.auth.id);
   if (!send) return res.status(403).json({ error: 'Access denied.' });
   const entry = db.prepare('SELECT * FROM misc_docs WHERE id = ?').get(docId);
   if (!entry) return res.status(404).json({ error: 'Not found.' });
-  const fullPath = resolveStoredFilePath(entry.storedName);
-  if (!fs.existsSync(fullPath)) return res.status(404).json({ error: 'File missing from storage.' });
-  return res.download(fullPath, entry.originalName || 'document');
+  return sendStoredAsset(res, entry.storedName, {
+    contentType: entry.mimeType,
+    disposition: 'attachment',
+    downloadName: entry.originalName || 'document',
+    missingMessage: 'File missing from storage.',
+  });
 });
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -10977,11 +11088,7 @@ app.post('/api/admin/contracts', authGuard(['admin']), upload.array('contract', 
   const industryTrack = String(req.body && req.body.industryTrack || '').trim().toLowerCase();
   const jobsiteUserId = Number(req.body && req.body.jobsiteUserId);
   const files = Array.isArray(req.files) ? req.files : [];
-  const removeUploadedFiles = () => {
-    files.forEach((file) => {
-      if (file && file.path) fs.unlink(file.path, () => {});
-    });
-  };
+  const removeUploadedFiles = () => discardUploadedFiles(files);
 
   if (!files.length) {
     return res.status(400).json({ error: 'Contract PDF is required.' });
@@ -11052,31 +11159,37 @@ app.post('/api/admin/contracts', authGuard(['admin']), upload.array('contract', 
     });
   });
 
-  try {
-    insertMany(files);
-  } catch (error) {
+  persistUploadedFiles(files, 'contracts').then(() => {
+    try {
+      insertMany(files);
+    } catch (error) {
+      removeUploadedFiles();
+      throw error;
+    }
+
+    createdIds.forEach((contractId, index) => {
+      const file = files[index];
+      runAsyncTask('notify_jobsite_contract_available', () =>
+        notifyJobsiteAboutContractAvailable(jobsiteUserId, contractId, file ? file.originalname : 'Contract', industryTrack, req.auth.id)
+      );
+    });
+
+    emitContractsDomainSyncToAdmins();
+
+    return res.status(201).json({
+      id: createdIds[0] || null,
+      ids: createdIds,
+      created: true,
+      count: createdIds.length,
+    });
+  }).catch((error) => {
     removeUploadedFiles();
-    throw error;
-  }
-
-  createdIds.forEach((contractId, index) => {
-    const file = files[index];
-    runAsyncTask('notify_jobsite_contract_available', () =>
-      notifyJobsiteAboutContractAvailable(jobsiteUserId, contractId, file ? file.originalname : 'Contract', industryTrack, req.auth.id)
-    );
-  });
-
-  emitContractsDomainSyncToAdmins();
-
-  return res.status(201).json({
-    id: createdIds[0] || null,
-    ids: createdIds,
-    created: true,
-    count: createdIds.length,
+    logCaughtException('admin contract upload', error, { actorUserId: req.auth.id, jobsiteUserId, industryTrack });
+    return res.status(500).json({ error: 'Failed to store contract upload.' });
   });
 });
 
-app.get('/api/contracts/:id/file', authGuard(['admin', 'jobsite']), (req, res) => {
+app.get('/api/contracts/:id/file', authGuard(['admin', 'jobsite']), async (req, res) => {
   const contractId = Number(req.params.id);
   if (!Number.isInteger(contractId) || contractId < 1) {
     return res.status(400).json({ error: 'Invalid contract id.' });
@@ -11096,12 +11209,12 @@ app.get('/api/contracts/:id/file', authGuard(['admin', 'jobsite']), (req, res) =
     db.prepare('UPDATE contracts SET clientOpenedAt = COALESCE(clientOpenedAt, CURRENT_TIMESTAMP), updatedAt = CURRENT_TIMESTAMP WHERE id = ?').run(contractId);
   }
 
-  const fullPath = resolveStoredFilePath(contract.storedName);
-  if (!fs.existsSync(fullPath)) {
-    return res.status(404).json({ error: 'Contract file is missing from storage.' });
-  }
-
-  return res.download(fullPath, contract.originalName || 'Contract.pdf');
+  return sendStoredAsset(res, contract.storedName, {
+    contentType: contract.mimeType,
+    disposition: 'attachment',
+    downloadName: contract.originalName || 'Contract.pdf',
+    missingMessage: 'Contract file is missing from storage.',
+  });
 });
 
 app.get('/api/portal/jobsite/contracts', authGuard(['jobsite']), (req, res) => {
@@ -12163,7 +12276,7 @@ app.post('/api/portal/employee/timesheets/submit', authGuard(['employee']), (req
 // POST /api/portal/employee/timesheets/upload
 // Submit a weekly timesheet (7 daily entries) with required paper proof file.
 app.post('/api/portal/employee/timesheets/upload', authGuard(['employee']), (req, res) => {
-  upload.single('timesheetFile')(req, res, (err) => {
+  upload.single('timesheetFile')(req, res, async (err) => {
     if (err) {
       return res.status(400).json({ error: err.message || 'Failed to upload timesheet file.' });
     }
@@ -12175,11 +12288,11 @@ app.post('/api/portal/employee/timesheets/upload', authGuard(['employee']), (req
     const entriesRaw = String((req.body && req.body.entries) || '').trim();
 
     if (!Number.isInteger(assignmentId) || assignmentId < 1) {
-      if (req.file) fs.unlink(req.file.path, () => {});
+      if (req.file) discardUploadedFile(req.file);
       return res.status(400).json({ error: 'Valid assignment is required.' });
     }
     if (!periodStart || !periodEnd) {
-      if (req.file) fs.unlink(req.file.path, () => {});
+      if (req.file) discardUploadedFile(req.file);
       return res.status(400).json({ error: 'periodStart and periodEnd are required.' });
     }
     if (!req.file) {
@@ -12192,7 +12305,7 @@ app.post('/api/portal/employee/timesheets/upload', authGuard(['employee']), (req
       try {
         rawEntries = JSON.parse(entriesRaw);
       } catch {
-        if (req.file) fs.unlink(req.file.path, () => {});
+        if (req.file) discardUploadedFile(req.file);
         return res.status(400).json({ error: 'Invalid entries format.' });
       }
     } else {
@@ -12201,14 +12314,14 @@ app.post('/api/portal/employee/timesheets/upload', authGuard(['employee']), (req
       const startTime = String((req.body && req.body.startTime) || '').trim();
       const endTime = String((req.body && req.body.endTime) || '').trim();
       if (!workedDate || !startTime || !endTime) {
-        if (req.file) fs.unlink(req.file.path, () => {});
+        if (req.file) discardUploadedFile(req.file);
         return res.status(400).json({ error: 'entries or workedDate/startTime/endTime are required.' });
       }
       rawEntries = [{ date: workedDate, startTime, endTime, lunchMinutes: 30 }];
     }
 
     if (!Array.isArray(rawEntries) || rawEntries.length === 0) {
-      if (req.file) fs.unlink(req.file.path, () => {});
+      if (req.file) discardUploadedFile(req.file);
       return res.status(400).json({ error: 'At least one day entry is required.' });
     }
 
@@ -12220,7 +12333,7 @@ app.post('/api/portal/employee/timesheets/upload', authGuard(['employee']), (req
     ).get(assignmentId, req.auth.id);
 
     if (!assignment) {
-      if (req.file) fs.unlink(req.file.path, () => {});
+      if (req.file) discardUploadedFile(req.file);
       return res.status(404).json({ error: 'Assignment not found.' });
     }
 
@@ -12239,7 +12352,7 @@ app.post('/api/portal/employee/timesheets/upload', authGuard(['employee']), (req
 
       if (!date || !startTime || !endTime) continue;
       if (lunchMinutes === 0 && !breakReason) {
-        if (req.file) fs.unlink(req.file.path, () => {});
+        if (req.file) discardUploadedFile(req.file);
         return res.status(400).json({ error: `Entry for ${date}: no-break reason is required when lunch is 0 minutes.` });
       }
 
@@ -12258,7 +12371,7 @@ app.post('/api/portal/employee/timesheets/upload', authGuard(['employee']), (req
       const rawHours = hoursWorked(clockInIso, clockOutIso);
 
       if (rawHours <= 0) {
-        if (req.file) fs.unlink(req.file.path, () => {});
+        if (req.file) discardUploadedFile(req.file);
         return res.status(400).json({ error: `Entry for ${date}: end time must be later than start time.` });
       }
 
@@ -12282,80 +12395,87 @@ app.post('/api/portal/employee/timesheets/upload', authGuard(['employee']), (req
     }
 
     if (builtEntries.length === 0) {
-      if (req.file) fs.unlink(req.file.path, () => {});
+      if (req.file) discardUploadedFile(req.file);
       return res.status(400).json({ error: 'No valid day entries provided.' });
     }
 
     const entriesJson = JSON.stringify(builtEntries);
 
-    const info = db.prepare(
-      `INSERT INTO timesheets (
-         employeeUserId,
-         jobsiteUserId,
-         assignmentId,
-         jobId,
-         periodStart,
-         periodEnd,
-         entriesJson,
-         totalHours,
-         source,
-         paperOriginalName,
-         paperStoredName,
-         paperMimeType,
-         paperFileSize,
-         status,
-         submittedBy,
-         notes,
-         submittedAt,
-         updatedAt
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'paper', ?, ?, ?, ?, 'pending_approval', 'employee', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
-    ).run(
-      req.auth.id,
-      assignment.jobsiteUserId || null,
-      assignmentId,
-      assignment.jobId,
-      periodStart,
-      periodEnd,
-      entriesJson,
-      Math.round(totalHoursSum * 100) / 100,
-      req.file ? req.file.originalname : null,
-      req.file ? req.file.filename : null,
-      req.file ? req.file.mimetype : null,
-      req.file ? req.file.size : null,
-      notes || null
-    );
-
-    if (sourceClockEntryIds.length) {
-      const uniqueIds = Array.from(new Set(sourceClockEntryIds));
-      const placeholders = uniqueIds.map(() => '?').join(',');
-      db.prepare(
-        `UPDATE employee_time_clock_entries
-         SET timesheetId = ?, updatedAt = CURRENT_TIMESTAMP
-         WHERE employeeUserId = ?
-           AND id IN (${placeholders})`
-      ).run(info.lastInsertRowid, req.auth.id, ...uniqueIds);
-    }
-
-    runAsyncTask('notify_jobsite_timesheet_submitted_paper', () =>
-      notifyJobsiteAboutTimesheetSubmitted({
-        jobsiteUserId: assignment.jobsiteUserId,
-        employeeUserId: req.auth.id,
-        employeeName: req.auth.name,
-        actorUserId: req.auth.id,
-        timesheetId: Number(info.lastInsertRowid),
-        source: 'paper',
+    try {
+      await persistUploadedFile(req.file, 'timesheets');
+      const info = db.prepare(
+        `INSERT INTO timesheets (
+           employeeUserId,
+           jobsiteUserId,
+           assignmentId,
+           jobId,
+           periodStart,
+           periodEnd,
+           entriesJson,
+           totalHours,
+           source,
+           paperOriginalName,
+           paperStoredName,
+           paperMimeType,
+           paperFileSize,
+           status,
+           submittedBy,
+           notes,
+           submittedAt,
+           updatedAt
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'paper', ?, ?, ?, ?, 'pending_approval', 'employee', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
+      ).run(
+        req.auth.id,
+        assignment.jobsiteUserId || null,
+        assignmentId,
+        assignment.jobId,
         periodStart,
         periodEnd,
-      })
-    );
+        entriesJson,
+        Math.round(totalHoursSum * 100) / 100,
+        req.file ? req.file.originalname : null,
+        req.file ? req.file.filename : null,
+        req.file ? req.file.mimetype : null,
+        req.file ? req.file.size : null,
+        notes || null
+      );
 
-    emitDomainSyncToAdmins(['scheduling', 'full'], ['admin-dashboard', 'timesheets']);
+      if (sourceClockEntryIds.length) {
+        const uniqueIds = Array.from(new Set(sourceClockEntryIds));
+        const placeholders = uniqueIds.map(() => '?').join(',');
+        db.prepare(
+          `UPDATE employee_time_clock_entries
+           SET timesheetId = ?, updatedAt = CURRENT_TIMESTAMP
+           WHERE employeeUserId = ?
+             AND id IN (${placeholders})`
+        ).run(info.lastInsertRowid, req.auth.id, ...uniqueIds);
+      }
 
-    return res.status(201).json({ id: info.lastInsertRowid, submitted: true });
+      runAsyncTask('notify_jobsite_timesheet_submitted_paper', () =>
+        notifyJobsiteAboutTimesheetSubmitted({
+          jobsiteUserId: assignment.jobsiteUserId,
+          employeeUserId: req.auth.id,
+          employeeName: req.auth.name,
+          actorUserId: req.auth.id,
+          timesheetId: Number(info.lastInsertRowid),
+          source: 'paper',
+          periodStart,
+          periodEnd,
+        })
+      );
+
+      emitDomainSyncToAdmins(['scheduling', 'full'], ['admin-dashboard', 'timesheets']);
+
+      return res.status(201).json({ id: info.lastInsertRowid, submitted: true });
+    } catch (error) {
+      discardUploadedFile(req.file);
+      logCaughtException('paper timesheet upload', error, { employeeUserId: req.auth.id, assignmentId });
+      return res.status(500).json({ error: 'Failed to store timesheet file.' });
+    }
   });
 });
 
-app.get('/api/portal/timesheets/:id/file', authGuard(), (req, res) => {
+app.get('/api/portal/timesheets/:id/file', authGuard(), async (req, res) => {
   const timesheetId = Number(req.params.id);
   if (!Number.isInteger(timesheetId) || timesheetId < 1) {
     return res.status(400).json({ error: 'Invalid timesheet id.' });
@@ -12379,12 +12499,12 @@ app.get('/api/portal/timesheets/:id/file', authGuard(), (req, res) => {
     return res.status(403).json({ error: 'Forbidden' });
   }
 
-  const fullPath = resolveStoredFilePath(row.paperStoredName);
-  if (!fs.existsSync(fullPath)) {
-    return res.status(404).json({ error: 'Timesheet file is missing from storage.' });
-  }
-
-  return res.download(fullPath, row.paperOriginalName || 'Timesheet.pdf');
+  return sendStoredAsset(res, row.paperStoredName, {
+    contentType: row.paperMimeType,
+    disposition: 'attachment',
+    downloadName: row.paperOriginalName || 'Timesheet.pdf',
+    missingMessage: 'Timesheet file is missing from storage.',
+  });
 });
 
 // ─── Timesheets: Jobsite routes ───────────────────────────────────────────────

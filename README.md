@@ -49,18 +49,6 @@ This project now includes role-based portal scaffolding for:
 - Jobsite: `http://localhost:3000/portal-jobsite`
 - Admin: `http://localhost:3000/portal-admin`
 
-## Default Admin (seeded automatically)
-
-The first server startup creates an admin user if no admin exists:
-
-- Email: `admin@progressstaffingagency.com`
-- Password: `ChangeMe123!`
-
-Override with environment variables:
-
-- `ADMIN_EMAIL`
-- `ADMIN_PASSWORD`
-
 ## Auth API
 
 - `POST /api/auth/register` (self-register as `employee` or `jobsite`)
@@ -148,7 +136,11 @@ Override with environment variables:
 
 - `APP_BASE_URL`: public base URL used in email and SMS links.
 - `DATABASE_URL`: PostgreSQL connection string used for all structured production data.
-- `UPLOAD_STORAGE_DIR`: durable filesystem mount for uploads if object storage is not yet configured. This must not point at Render ephemeral app disk.
+- `STORAGE_BACKEND`: set to `s3` for object storage or `local` for an explicit durable filesystem mount.
+- `STORAGE_S3_BUCKET`, `STORAGE_S3_REGION`, `STORAGE_S3_ACCESS_KEY_ID`, `STORAGE_S3_SECRET_ACCESS_KEY`: required for S3-compatible object storage.
+- `STORAGE_S3_ENDPOINT`: optional custom endpoint for S3-compatible providers.
+- `STORAGE_S3_FORCE_PATH_STYLE`: optional `true`/`false` for S3-compatible providers that require path-style requests.
+- `UPLOAD_STORAGE_DIR`: required only when `STORAGE_BACKEND=local`; this must not point at Render ephemeral app disk.
 - `POSTMARK_SERVER_TOKEN`: Postmark server API token for outbound mail.
 - `EMAIL_FROM`: sender address for email notifications. Defaults to `onboarding@progressstaffingagency.com`.
 - `EMAIL_REPLY_TO`: reply-to address for email notifications. Defaults to `onboarding@progressstaffingagency.com`.
@@ -156,6 +148,8 @@ Override with environment variables:
 - `TWILIO_AUTH_TOKEN`
 - `TWILIO_FROM_NUMBER`
 - `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY`: required in production. Production no longer falls back to `data/vapid-keys.json`.
+- `ADMIN_EMAIL` and `ADMIN_PASSWORD`: optional non-production bootstrap credentials if you explicitly want startup seeding.
+- `SCOPED_PORTAL_PASSCODE`, `ONBOARDING_PORTAL_EMAIL`, `CONTRACTS_PORTAL_EMAIL`, `SCHEDULING_PORTAL_EMAIL`: optional non-production scoped-portal seed settings.
 
 If Postmark, Twilio, or push settings are not configured, the related notification channel is skipped without breaking shift posting.
 
@@ -170,4 +164,4 @@ If Postmark, Twilio, or push settings are not configured, the related notificati
 - For a static-only deployment, deploy the folder to any static host (GitHub Pages, Netlify, Vercel).
 - For backend functionality, deploy the Node.js server with PostgreSQL configured through `DATABASE_URL`.
 - Before first production boot on Render, import existing SQLite data with `npm run migrate:sqlite-to-postgres`.
-- Configure either object storage or a durable mounted upload path through `UPLOAD_STORAGE_DIR` before relying on uploaded files in production.
+- Configure S3-compatible object storage before relying on uploaded files in production. Use `STORAGE_BACKEND=local` with `UPLOAD_STORAGE_DIR` only when you have an explicit durable mounted filesystem.

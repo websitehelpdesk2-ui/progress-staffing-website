@@ -9891,25 +9891,35 @@ app.get('/api/portal/admin/dashboard', authGuard(['admin']), (req, res) => {
 });
 
 app.get('/api/admin/users', authGuard(['admin']), (req, res) => {
-  const users = db
-    .prepare(
-      `SELECT u.id, u.name, u.email, u.role, u.isActive, u.createdAt, u.lastLoginAt
-       FROM users u
-       ORDER BY u.createdAt DESC`
-    )
-    .all()
-    .map((user) => {
-      const normalizedRole = String(user.role || '').trim().toLowerCase();
-      if (normalizedRole === 'jobsite') {
-        return { ...user, industryTrack: getJobsiteIndustryTrack(user.id) };
-      }
-      if (normalizedRole === 'employee') {
-        return { ...user, industryTrack: getEmployeeIndustryTrack(user.id, user.email) };
-      }
-      return { ...user, industryTrack: '' };
-    });
+  try {
+    const users = db
+      .prepare(
+        `SELECT u.id, u.name, u.email, u.role, u.isActive, u.createdAt, u.lastLoginAt
+         FROM users u
+         ORDER BY u.createdAt DESC`
+      )
+      .all()
+      .map((user) => {
+        const normalizedRole = String(user.role || '').trim().toLowerCase();
+        if (normalizedRole === 'jobsite') {
+          return { ...user, industryTrack: getJobsiteIndustryTrack(user.id) };
+        }
+        if (normalizedRole === 'employee') {
+          return { ...user, industryTrack: getEmployeeIndustryTrack(user.id, user.email) };
+        }
+        return { ...user, industryTrack: '' };
+      });
 
-  res.json({ data: users });
+    res.json({ data: users });
+  } catch (error) {
+    console.error('[admin-users] failed to load admin users', {
+      path: req.originalUrl || req.path,
+      adminUserId: req.auth && req.auth.id,
+      message: error && error.message ? error.message : String(error),
+      stack: error && error.stack ? error.stack : null,
+    });
+    res.status(500).json({ error: 'Failed to load admin users.' });
+  }
 });
 
 app.get('/api/admin/diagnostics/timesheet-reminders', authGuard(['admin']), (req, res) => {

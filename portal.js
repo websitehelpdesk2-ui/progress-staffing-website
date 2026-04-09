@@ -1265,6 +1265,31 @@ function routeForRole(role, portalScope = 'full') {
   return '/portal-login';
 }
 
+function redirectToUserHome(user, context, details = {}) {
+  const targetPath = user && user.homePath ? user.homePath : routeForRole(user && user.role, user && user.portalScope);
+  const currentUrl = new URL(window.location.href);
+  const targetUrl = new URL(targetPath, window.location.origin);
+
+  if (currentUrl.pathname === targetUrl.pathname && currentUrl.search === targetUrl.search) {
+    console.warn('[portal-loop-guard] prevented self-redirect', {
+      context,
+      currentPath: `${currentUrl.pathname}${currentUrl.search}`,
+      targetPath: `${targetUrl.pathname}${targetUrl.search}`,
+      ...details,
+    });
+    return false;
+  }
+
+  console.warn('[portal-redirect] redirecting to user home', {
+    context,
+    currentPath: `${currentUrl.pathname}${currentUrl.search}`,
+    targetPath: `${targetUrl.pathname}${targetUrl.search}`,
+    ...details,
+  });
+  window.location.href = targetUrl.toString();
+  return true;
+}
+
 function parsePortalDateTime(value) {
   if (value === null || value === undefined || value === '') return null;
   if (value instanceof Date) {
@@ -5760,7 +5785,7 @@ function renderAdminDashboard(dashboard, usersPayload, jobsPayload, employeesPay
 async function loadEmployeeDashboard(user) {
   const res = await apiFetch('/api/portal/employee/dashboard');
   if (!res.ok) {
-    window.location.href = user && user.homePath ? user.homePath : routeForRole(user.role, user.portalScope);
+    redirectToUserHome(user, 'loadEmployeeDashboard', { status: res.status });
     return;
   }
   const data = await res.json();
@@ -7236,7 +7261,7 @@ function bindEmployeeForms(currentUser) {
 async function loadJobsiteDashboard(user) {
   const res = await apiFetch('/api/portal/jobsite/dashboard');
   if (!res.ok) {
-    window.location.href = user && user.homePath ? user.homePath : routeForRole(user.role, user.portalScope);
+    redirectToUserHome(user, 'loadJobsiteDashboard', { status: res.status });
     return;
   }
   const data = await res.json();
@@ -7263,7 +7288,9 @@ async function loadAdminDashboard(user) {
   ]);
 
   if (!dashboardRes.ok || !usersRes.ok || !jobsRes.ok || !employeesRes.ok || !documentsRes.ok || !assignmentsRes.ok || !timesheetsRes.ok || !excuseFormsRes.ok) {
-    window.location.href = user && user.homePath ? user.homePath : routeForRole(user.role, user.portalScope);
+    redirectToUserHome(user, 'loadAdminDashboard', {
+      statuses: [dashboardRes.status, usersRes.status, jobsRes.status, employeesRes.status, documentsRes.status, assignmentsRes.status, timesheetsRes.status, excuseFormsRes.status],
+    });
     return;
   }
 
@@ -7469,7 +7496,7 @@ async function loadSchedulingReminderDiagnostics() {
 async function loadSchedulingPortalData(user) {
   const res = await apiFetch('/api/portal/scheduling/dashboard');
   if (!res.ok) {
-    window.location.href = user && user.homePath ? user.homePath : routeForRole(user.role, user.portalScope);
+    redirectToUserHome(user, 'loadSchedulingPortalData', { status: res.status });
     return;
   }
 
@@ -7668,7 +7695,7 @@ async function loadOnboardingEmployeeProfile(employeeId) {
 async function loadOnboardingPortalData(user) {
   const res = await apiFetch('/api/portal/onboarding/employees');
   if (!res.ok) {
-    window.location.href = user && user.homePath ? user.homePath : routeForRole(user.role, user.portalScope);
+    redirectToUserHome(user, 'loadOnboardingPortalData', { status: res.status });
     return;
   }
 
@@ -7791,7 +7818,7 @@ function bindOnboardingPortalForms(currentUser) {
 async function loadContractsPortalData(user) {
   const res = await apiFetch('/api/portal/contracts/dashboard');
   if (!res.ok) {
-    window.location.href = user && user.homePath ? user.homePath : routeForRole(user.role, user.portalScope);
+    redirectToUserHome(user, 'loadContractsPortalData', { status: res.status });
     return;
   }
 

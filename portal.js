@@ -24,6 +24,44 @@ function hideMessage(element) {
   element.className = 'form-message';
 }
 
+function sanitizePortalRedirectTarget(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+
+  try {
+    const url = new URL(raw, window.location.origin);
+    if (url.origin !== window.location.origin) return '';
+    if (!url.pathname.startsWith('/portal-')) return '';
+    if (url.pathname === '/portal-login') return '';
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch (_error) {
+    return '';
+  }
+}
+
+function getPortalRedirectTargetFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  return sanitizePortalRedirectTarget(params.get('redirect'));
+}
+
+function getCurrentPortalRelativeUrl() {
+  return sanitizePortalRedirectTarget(`${window.location.pathname}${window.location.search}${window.location.hash}`);
+}
+
+function buildPortalLoginRedirectPath(targetPath = '', extraParams = {}) {
+  const loginPath = IS_FILE_PROTOCOL ? 'portal-login.html' : '/portal-login';
+  const url = new URL(loginPath, window.location.origin);
+  const safeTarget = sanitizePortalRedirectTarget(targetPath);
+  if (safeTarget) {
+    url.searchParams.set('redirect', safeTarget);
+  }
+  Object.entries(extraParams || {}).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === '') return;
+    url.searchParams.set(key, String(value));
+  });
+  return `${url.pathname}${url.search}${url.hash}`;
+}
+
 function saveToken(token) {
   if (!token) return;
   localStorage.setItem(TOKEN_KEY, token);
@@ -1231,8 +1269,7 @@ async function apiFetch(url, options = {}) {
 
   if (res.status === 401 && !options._skipAuthRedirect) {
     clearToken();
-    const loginPath = IS_FILE_PROTOCOL ? 'portal-login.html' : '/portal-login';
-    window.location.href = `${loginPath}?reason=session_expired`;
+    window.location.href = buildPortalLoginRedirectPath(getCurrentPortalRelativeUrl(), { reason: 'session_expired' });
     // Return a never-resolving promise so callers don't run their error path
     return new Promise(() => {});
   }
@@ -2918,8 +2955,13 @@ async function handlePortalNotificationIntent(currentUser) {
   }
 
   if (task === 'employee-documents' && String(document.body?.dataset?.portalPage || '').toLowerCase() === 'employee') {
-    const uploadSection = document.getElementById('employeeUploadSection');
-    if (uploadSection) openPortalDrawerById('employeeUploadSection');
+    const documentType = String(params.get('documentType') || '').trim().toLowerCase();
+    if (documentType) {
+      openEmployeeUploadForDocumentType(documentType);
+    } else {
+      const uploadSection = document.getElementById('employeeUploadSection');
+      if (uploadSection) openPortalDrawerById('employeeUploadSection');
+    }
   }
 
   if (task === 'employee-profile' && String(document.body?.dataset?.portalPage || '').toLowerCase() === 'admin') {
@@ -2934,7 +2976,21 @@ async function handlePortalNotificationIntent(currentUser) {
     if (timesheetSection) timesheetSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
-  clearUrlParams(['task', 'employeeId', 'docId', 'contractId', 'track', 'timesheetId']);
+  clearUrlParams(['task', 'employeeId', 'docId', 'contractId', 'track', 'timesheetId', 'documentType']);
+}
+
+function formatReminderDeliverySummary(delivery = {}) {
+  const orderedChannels = ['portal', 'email', 'push', 'sms'];
+  return orderedChannels
+    .filter((channel) => delivery && delivery[channel])
+    .map((channel) => {
+      const entry = delivery[channel] || {};
+      if (entry.status === 'sent') return `${channel}: sent`;
+      if (entry.status === 'skipped') return `${channel}: skipped (${entry.reason || 'unavailable'})`;
+      if (entry.status === 'failed') return `${channel}: failed (${entry.reason || 'error'})`;
+      return `${channel}: ${entry.status || 'unknown'}`;
+    })
+    .join(' | ');
 }
 
 function resolvePortalPrioritySections(pageType, sections) {
@@ -4545,9 +4601,10 @@ async function handlePortalLoginSubmit(event) {
 
   const data = await res.json();
   saveToken(data.token);
-  window.location.href = data && data.user && data.user.homePath
+  const redirectTarget = getPortalRedirectTargetFromUrl();
+  window.location.href = redirectTarget || (data && data.user && data.user.homePath
     ? data.user.homePath
-    : routeForRole(data.user.role, data.user.portalScope);
+    : routeForRole(data.user.role, data.user.portalScope));
 }
 
 function bindAuthEntryForms() {
@@ -9260,7 +9317,8 @@ function bindAdminForms(currentUser) {
             setMessage(msg, payload.error || 'Failed to send reminder.', 'error');
             return;
           }
-          setMessage(msg, 'Document reminder sent to employee.', 'success');
+          const summary = formatReminderDeliverySummary(payload.delivery || {});
+          setMessage(msg, summary ? `Reminder sent. ${summary}` : 'Document reminder sent to employee.', 'success');
         } catch {
           setMessage(msg, 'Failed to send reminder.', 'error');
         } finally {
@@ -10820,7 +10878,8 @@ async function initPortalPage() {
 
     const user = await loadCurrentUser({ cookieOnly: true });
     if (user) {
-      window.location.href = user && user.homePath ? user.homePath : routeForRole(user.role, user.portalScope);
+      const redirectTarget = getPortalRedirectTargetFromUrl();
+      window.location.href = redirectTarget || (user && user.homePath ? user.homePath : routeForRole(user.role, user.portalScope));
     }
 
     // Handle ?resetToken= in URL — show the reset password form
@@ -11013,7 +11072,7 @@ async function initPortalPage() {
   if (!user) {
     portalCurrentUser = null;
     clearToken();
-    window.location.href = routeForRole('login');
+    window.location.href = buildPortalLoginRedirectPath(getCurrentPortalRelativeUrl());
     return;
   }
   portalCurrentUserId = Number(user.id) || null;

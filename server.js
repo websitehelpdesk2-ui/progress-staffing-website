@@ -71,6 +71,7 @@ const SENSITIVE_PASSKEY_ACTIONS = new Set([
 
 const passkeyChallenges = new Map();
 const passkeyActionProofs = new Map();
+const manualDocumentReminderInFlight = new Map();
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
 const EMAIL_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000;
 const AUTO_DB_BOOTSTRAP = !isProductionDeployment() && String(process.env.AUTO_DB_BOOTSTRAP || '').trim().toLowerCase() === 'true';
@@ -1988,7 +1989,8 @@ async function sendSmsNotification(to, body, userId = null) {
     const pref = db.prepare('SELECT notifySmsEnabled FROM users WHERE id = ?').get(userId);
     if (pref && Number(pref.notifySmsEnabled) !== 1) return { skipped: true, disabled: 'sms' };
   }
-  if (!smsClient || !TWILIO_FROM_NUMBER || !to) return { skipped: true };
+  if (!to) return { skipped: true, reason: 'missing-recipient' };
+  if (!smsClient || !TWILIO_FROM_NUMBER) return { skipped: true, reason: 'sms-not-configured' };
   await smsClient.messages.create({ from: TWILIO_FROM_NUMBER, to, body });
   return { sent: true };
 }
@@ -2004,11 +2006,15 @@ async function sendPushNotificationToUser(userId, payload, options = {}) {
     .prepare('SELECT id, endpoint, keysJson FROM notification_subscriptions WHERE userId = ?')
     .all(userId);
 
-  if (!subscriptions.length || !vapidKeys) {
-    return { skipped: true };
+  if (!subscriptions.length) {
+    return { skipped: true, reason: 'no-subscriptions' };
   }
 
-  await Promise.allSettled(
+  if (!vapidKeys) {
+    return { skipped: true, reason: 'push-not-configured' };
+  }
+
+  const settled = await Promise.allSettled(
     subscriptions.map(async (subscriptionRow) => {
       const subscription = {
         endpoint: subscriptionRow.endpoint,
@@ -2027,7 +2033,96 @@ async function sendPushNotificationToUser(userId, payload, options = {}) {
     })
   );
 
-  return { sent: true };
+  const fulfilledCount = settled.filter((entry) => entry.status === 'fulfilled').length;
+  const rejected = settled.filter((entry) => entry.status === 'rejected');
+  if (!fulfilledCount && rejected.length) {
+    const firstError = rejected[0] && rejected[0].reason;
+    throw firstError instanceof Error
+      ? firstError
+      : new Error(firstError && firstError.message ? firstError.message : 'Push delivery failed.');
+  }
+
+  return {
+    sent: fulfilledCount > 0,
+    subscriptionCount: subscriptions.length,
+    deliveredCount: fulfilledCount,
+    failedCount: rejected.length,
+  };
+}
+
+function buildEmployeeDocumentReminderPath(documentType, extraParams = {}) {
+  return buildPortalPath('/portal-employee', {
+    task: 'employee-documents',
+    documentType: String(documentType || '').trim().toLowerCase(),
+    ...extraParams,
+  });
+}
+
+function buildDocumentReminderEmailPayload({ employeeName, title, body, directUrl, fallbackUrl, documentLabel }) {
+  const safeName = escapeHtmlText(employeeName || 'there');
+  const safeBody = escapeHtmlText(body || 'Please review your employee portal.');
+  const safeLabel = escapeHtmlText(documentLabel || 'document');
+  return {
+    subject: title,
+    text: `Hi ${employeeName || 'there'},\n\n${body}\n\nDirect link: ${directUrl}\nFallback login: ${fallbackUrl}\n\nIf the direct link asks you to sign in, complete login and you will return to the exact ${documentLabel || 'task'}.`,
+    html: `<p>Hi ${safeName},</p><p>${safeBody}</p><p><a href="${directUrl}">Open ${safeLabel} task</a></p><p>If you need to sign in first, use this fallback link: <a href="${fallbackUrl}">${fallbackUrl}</a></p>`,
+  };
+}
+
+function normalizeDeliveryChannelResult(channel, result) {
+  if (result && result.sent) {
+    return { channel, status: 'sent', details: result };
+  }
+  if (result && result.skipped) {
+    return {
+      channel,
+      status: 'skipped',
+      reason: result.reason || result.disabled || 'skipped',
+      details: result,
+    };
+  }
+  return {
+    channel,
+    status: 'unknown',
+    details: result || null,
+  };
+}
+
+async function executeReminderChannel(channel, handler) {
+  try {
+    const result = await handler();
+    const normalized = normalizeDeliveryChannelResult(channel, result);
+    console.info('[document-reminder] channel completed', normalized);
+    return normalized;
+  } catch (error) {
+    const failure = {
+      channel,
+      status: 'failed',
+      reason: error && error.message ? error.message : 'delivery-failed',
+    };
+    console.error('[document-reminder] channel failed', {
+      channel,
+      message: failure.reason,
+      stack: error && error.stack ? error.stack : null,
+    });
+    return failure;
+  }
+}
+
+function makeManualDocumentReminderLockKey(employeeUserId, documentType) {
+  return `${employeeUserId}:${String(documentType || '').trim().toLowerCase()}`;
+}
+
+function tryAcquireManualDocumentReminderLock(employeeUserId, documentType) {
+  const key = makeManualDocumentReminderLockKey(employeeUserId, documentType);
+  if (manualDocumentReminderInFlight.has(key)) return null;
+  manualDocumentReminderInFlight.set(key, Date.now());
+  return key;
+}
+
+function releaseManualDocumentReminderLock(lockKey) {
+  if (!lockKey) return;
+  manualDocumentReminderInFlight.delete(lockKey);
 }
 
 function buildShiftNotificationCopy(shift, actionLabel) {
@@ -3671,7 +3766,10 @@ async function sendEmployeeDocumentReminder(options = {}) {
   }
 
   const documentLabel = getDocumentTypeLabel(documentType);
-  const url = buildPortalPath('/portal-employee', { task: 'employee-documents' });
+  const url = buildEmployeeDocumentReminderPath(documentType);
+  const directUrl = absolutePortalUrl(url);
+  const fallbackUrl = absolutePortalUrl('/portal-login');
+  const employeePhone = getUserPhoneNumber(employeeUserId, 'employee');
 
   let title = 'Document reminder';
   let body = `Please upload or update your ${documentLabel} in the employee portal.`;
@@ -3684,41 +3782,72 @@ async function sendEmployeeDocumentReminder(options = {}) {
     }
   }
 
-  await Promise.allSettled([
-    sendOnboardingReminderEmail({
-      to: employee.email,
-      subject: title,
-      text: `${body}\n\nOpen portal: ${absolutePortalUrl(url)}`,
-      html: `<p>${escapeHtmlText(body)}</p><p><a href="${absolutePortalUrl(url)}">Open Portal</a></p>`,
+  const emailPayload = buildDocumentReminderEmailPayload({
+    employeeName: employee.name,
+    title,
+    body,
+    directUrl,
+    fallbackUrl,
+    documentLabel,
+  });
+  const smsBody = `${title}: ${body} Open: ${directUrl}`.slice(0, 320);
+
+  const channelResults = await Promise.all([
+    executeReminderChannel('portal', async () => {
+      const notificationId = createPortalNotification({
+        userId: employeeUserId,
+        actorUserId,
+        category: 'document',
+        title,
+        body,
+        url,
+        taskType: reason === 'expiration_auto' ? 'document_expiration' : 'document_reminder',
+        taskRefId: null,
+        metadata: {
+          employeeId: employeeUserId,
+          documentType,
+          reason,
+          expirationDate,
+          daysUntilExpiration,
+        },
+        syncDomains: ['notifications', 'documents'],
+      });
+      return notificationId
+        ? { sent: true, notificationId }
+        : { skipped: true, reason: 'portal-notification-not-created' };
     }),
-    sendPushNotificationToUser(employeeUserId, {
+    executeReminderChannel('email', async () => sendEmailNotification(
+      employee.email,
+      emailPayload.subject,
+      emailPayload.text,
+      emailPayload.html,
+      employeeUserId,
+      { logContext: `document_reminder:${reason}:${documentType}` }
+    )),
+    executeReminderChannel('push', async () => sendPushNotificationToUser(employeeUserId, {
       title,
       body,
       url,
       tag: reason === 'expiration_auto' ? `doc-expiration-${documentType}` : `doc-reminder-${documentType}`,
-      data: { documentType, reason },
-    }, { ignorePreference: true }),
-    Promise.resolve(createPortalNotification({
-      userId: employeeUserId,
-      actorUserId,
-      category: 'document',
-      title,
-      body,
-      url,
-      taskType: reason === 'expiration_auto' ? 'document_expiration' : 'document_reminder',
-      taskRefId: null,
-      metadata: {
-        employeeId: employeeUserId,
-        documentType,
-        reason,
-        expirationDate,
-        daysUntilExpiration,
-      },
-      syncDomains: ['notifications', 'documents'],
+      data: { documentType, reason, directUrl },
     })),
+    executeReminderChannel('sms', async () => sendSmsNotification(employeePhone, smsBody, employeeUserId)),
   ]);
 
-  return { sent: true };
+  const delivery = channelResults.reduce((acc, entry) => {
+    acc[entry.channel] = entry;
+    return acc;
+  }, {});
+
+  return {
+    sent: channelResults.some((entry) => entry.status === 'sent'),
+    title,
+    body,
+    url,
+    directUrl,
+    fallbackUrl,
+    delivery,
+  };
 }
 
 function getEmployeeBackgroundConsentForm(userId, options = {}) {
@@ -10356,7 +10485,7 @@ app.get('/api/admin/employees/:id/profile', authGuard(['admin']), (req, res) => 
   });
 });
 
-app.post('/api/admin/employees/:employeeId/document-reminders', authGuard(['admin']), (req, res) => {
+async function handleEmployeeDocumentReminderRequest(req, res) {
   const employeeId = Number(req.params.employeeId);
   const documentType = String(req.body && req.body.documentType ? req.body.documentType : '').trim().toLowerCase();
 
@@ -10391,23 +10520,62 @@ app.post('/api/admin/employees/:employeeId/document-reminders', authGuard(['admi
     return res.status(400).json({ error: 'Document type is not applicable for this employee profile.' });
   }
 
-  runAsyncTask('notify_employee_document_manual_reminder', () =>
-    sendEmployeeDocumentReminder({
+  const lockKey = tryAcquireManualDocumentReminderLock(employee.id, documentType);
+  if (!lockKey) {
+    return res.status(409).json({ error: 'A reminder for this document is already being sent.' });
+  }
+
+  try {
+    const reminderResult = await sendEmployeeDocumentReminder({
       employeeUserId: employee.id,
       actorUserId: req.auth.id,
       documentType,
       reason: 'admin_manual',
       weekKey: null,
-    })
-  );
+    });
 
-  logAdminAction(
-    req.auth.id,
-    'employee_document_reminder_sent',
-    JSON.stringify({ employeeId: employee.id, documentType })
-  );
+    logAdminAction(
+      req.auth.id,
+      'employee_document_reminder_sent',
+      JSON.stringify({ employeeId: employee.id, documentType, delivery: reminderResult.delivery || null })
+    );
 
-  return res.status(202).json({ queued: true, employeeId: employee.id, documentType });
+    return res.json({
+      sent: Boolean(reminderResult.sent),
+      employeeId: employee.id,
+      documentType,
+      delivery: reminderResult.delivery || {},
+      directUrl: reminderResult.directUrl || null,
+      fallbackUrl: reminderResult.fallbackUrl || null,
+    });
+  } finally {
+    releaseManualDocumentReminderLock(lockKey);
+  }
+}
+
+app.post('/api/admin/employees/:employeeId/document-reminders', authGuard(['admin']), (req, res) => {
+  handleEmployeeDocumentReminderRequest(req, res).catch((error) => {
+    logCaughtException('admin employee document reminder', error, {
+      employeeId: req.params.employeeId,
+      actorUserId: req.auth && req.auth.id,
+      documentType: req.body && req.body.documentType,
+    });
+    res.status(500).json({ error: 'Failed to send reminder.' });
+  });
+});
+
+app.post('/api/portal/onboarding/employees/:employeeId/document-reminders', authGuard(['admin']), (req, res) => {
+  if (!hasAdminScopeAccess(req.auth, ['onboarding'])) {
+    return res.status(403).json({ error: 'Forbidden - onboarding scope required.' });
+  }
+  handleEmployeeDocumentReminderRequest(req, res).catch((error) => {
+    logCaughtException('onboarding employee document reminder', error, {
+      employeeId: req.params.employeeId,
+      actorUserId: req.auth && req.auth.id,
+      documentType: req.body && req.body.documentType,
+    });
+    res.status(500).json({ error: 'Failed to send reminder.' });
+  });
 });
 
 app.put('/api/admin/employees/:employeeId/documents/:docId/review', authGuard(['admin']), (req, res) => {

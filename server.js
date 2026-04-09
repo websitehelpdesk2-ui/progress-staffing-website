@@ -3087,7 +3087,7 @@ function getJobsiteIndustryTrack(userId) {
        FROM contracts
        WHERE jobsiteUserId = ?
          AND industryTrack IN ('warehouse', 'healthcare')
-       ORDER BY datetime(COALESCE(updatedAt, createdAt)) DESC
+       ORDER BY COALESCE(updatedAt, createdAt) DESC
        LIMIT 1`
     )
     .get(userId);
@@ -11454,10 +11454,6 @@ app.post('/api/portal/jobsite/contracts/:id/withdraw', authGuard(['jobsite']), (
 
   return res.json({ withdrawn: true });
 });
-
-app.get('/api/admin/documents', authGuard(['admin']), (req, res) => {
-    return res.json({ withdrawn: true });
-  });
 
   // ── Contract delete (admin only; pending/declined/withdrawn only) ─────────────
   app.delete('/api/admin/contracts/:id', authGuard(['admin']), (req, res) => {

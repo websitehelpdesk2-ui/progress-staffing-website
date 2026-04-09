@@ -5782,6 +5782,70 @@ function renderAdminDashboard(dashboard, usersPayload, jobsPayload, employeesPay
   renderAdminExcuseFormsSection();
 }
 
+function clearAdminDashboardLoadMessages() {
+  hideMessage(document.getElementById('adminDashboardMessage'));
+  hideMessage(document.getElementById('adminUserMessage'));
+}
+
+function buildAdminDashboardFallback(user) {
+  return {
+    user: user || null,
+    stats: {
+      totalUsers: '—',
+      employees: '—',
+      jobsites: '—',
+      jobsOpen: '—',
+      applications: '—',
+    },
+  };
+}
+
+function applyAdminDashboardFailureState(failures = {}) {
+  const dashboardMsg = document.getElementById('adminDashboardMessage');
+  const userMsg = document.getElementById('adminUserMessage');
+  const failureEntries = Object.entries(failures);
+
+  if (!failureEntries.length) {
+    clearAdminDashboardLoadMessages();
+    return;
+  }
+
+  if (failures.dashboard) {
+    setText('statTotalUsers', '—');
+    setText('statEmployees', '—');
+    setText('statJobsites', '—');
+    setText('statOpenJobs', '—');
+    setText('statApplications', '—');
+  }
+
+  if (failures.users) {
+    setTableRows('adminUsersTbody', [], 9, 'Unable to load users right now.');
+    if (userMsg) setMessage(userMsg, failures.users.message || 'Unable to load users right now.', 'error');
+  } else if (userMsg) {
+    hideMessage(userMsg);
+  }
+
+  if (failures.employees) {
+    setTableRows('adminEmployeesTbody', [], 8, 'Unable to load employees right now.');
+  }
+  if (failures.jobs) {
+    setTableRows('adminJobsTbody', [], 10, 'Unable to load shifts right now.');
+  }
+  if (failures.timesheets) {
+    setTableRows('adminTimesheetsTbody', [], 9, 'Unable to load timesheets right now.');
+  }
+  if (failures.excuseForms) {
+    setTableRows('adminExcuseFormsTbody', [], 7, 'Unable to load excuse forms right now.');
+  }
+
+  if (dashboardMsg) {
+    const summary = failureEntries
+      .map(([key, details]) => `${key}: ${details.message || 'Request failed.'}`)
+      .join(' | ');
+    setMessage(dashboardMsg, `Some admin data could not be loaded. ${summary}`, 'error');
+  }
+}
+
 async function loadEmployeeDashboard(user) {
   const res = await apiFetch('/api/portal/employee/dashboard');
   if (!res.ok) {
@@ -7276,36 +7340,68 @@ async function loadJobsiteDashboard(user) {
 }
 
 async function loadAdminDashboard(user) {
-  const [dashboardRes, usersRes, jobsRes, employeesRes, documentsRes, assignmentsRes, timesheetsRes, excuseFormsRes] = await Promise.all([
-    apiFetch('/api/portal/admin/dashboard'),
-    apiFetch('/api/admin/users'),
-    apiFetch('/api/admin/jobs'),
-    apiFetch('/api/admin/employees'),
-    apiFetch('/api/admin/documents'),
-    apiFetch('/api/admin/assignments'),
-    apiFetch('/api/admin/timesheets'),
-    apiFetch('/api/admin/excuse-forms'),
-  ]);
+  clearAdminDashboardLoadMessages();
 
-  if (!dashboardRes.ok || !usersRes.ok || !jobsRes.ok || !employeesRes.ok || !documentsRes.ok || !assignmentsRes.ok || !timesheetsRes.ok || !excuseFormsRes.ok) {
-    redirectToUserHome(user, 'loadAdminDashboard', {
-      statuses: [dashboardRes.status, usersRes.status, jobsRes.status, employeesRes.status, documentsRes.status, assignmentsRes.status, timesheetsRes.status, excuseFormsRes.status],
+  const adminRequests = [
+    { key: 'dashboard', url: '/api/portal/admin/dashboard', fallback: buildAdminDashboardFallback(user) },
+    { key: 'users', url: '/api/admin/users', fallback: { data: [] } },
+    { key: 'jobs', url: '/api/admin/jobs', fallback: { data: [] } },
+    { key: 'employees', url: '/api/admin/employees', fallback: { data: [] } },
+    { key: 'documents', url: '/api/admin/documents', fallback: { data: [] } },
+    { key: 'assignments', url: '/api/admin/assignments', fallback: { data: [] } },
+    { key: 'timesheets', url: '/api/admin/timesheets', fallback: { timesheets: [] } },
+    { key: 'excuseForms', url: '/api/admin/excuse-forms', fallback: { data: [] } },
+  ];
+
+  const settled = await Promise.allSettled(adminRequests.map((request) => apiFetch(request.url)));
+  const payloads = {};
+  const failures = {};
+
+  for (let index = 0; index < adminRequests.length; index += 1) {
+    const request = adminRequests[index];
+    const result = settled[index];
+
+    if (result.status !== 'fulfilled') {
+      const message = result.reason && result.reason.message ? result.reason.message : 'Network request failed.';
+      failures[request.key] = { message };
+      payloads[request.key] = request.fallback;
+      console.warn('[admin-dashboard] request rejected', { key: request.key, url: request.url, message });
+      continue;
+    }
+
+    const response = result.value;
+    const parsed = await response.json().catch((error) => {
+      const message = error && error.message ? error.message : 'Invalid server response.';
+      failures[request.key] = { message };
+      console.warn('[admin-dashboard] response parse failed', { key: request.key, url: request.url, status: response.status, message });
+      return request.fallback;
     });
-    return;
+
+    if (!response.ok) {
+      const message = parsed && parsed.error
+        ? parsed.error
+        : `Request failed with status ${response.status}.`;
+      failures[request.key] = { message, status: response.status };
+      payloads[request.key] = request.fallback;
+      console.warn('[admin-dashboard] request failed', { key: request.key, url: request.url, status: response.status, message });
+      continue;
+    }
+
+    payloads[request.key] = parsed;
   }
 
-  const [dashboard, usersPayload, jobsPayload, employeesPayload, documentsPayload, assignmentsPayload, timesheetsPayload, excuseFormsPayload] = await Promise.all([
-    dashboardRes.json(),
-    usersRes.json(),
-    jobsRes.json(),
-    employeesRes.json(),
-    documentsRes.json(),
-    assignmentsRes.json(),
-    timesheetsRes.json(),
-    excuseFormsRes.json(),
-  ]);
+  renderAdminDashboard(
+    payloads.dashboard || buildAdminDashboardFallback(user),
+    payloads.users || { data: [] },
+    payloads.jobs || { data: [] },
+    payloads.employees || { data: [] },
+    payloads.documents || { data: [] },
+    payloads.assignments || { data: [] },
+    payloads.timesheets || { timesheets: [] },
+    payloads.excuseForms || { data: [] }
+  );
 
-  renderAdminDashboard(dashboard, usersPayload, jobsPayload, employeesPayload, documentsPayload, assignmentsPayload, timesheetsPayload, excuseFormsPayload);
+  applyAdminDashboardFailureState(failures);
 }
 
 let onboardingPortalSelectedEmployeeId = null;

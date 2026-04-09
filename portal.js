@@ -1211,7 +1211,7 @@ async function loadJobsiteContracts() {
 }
 
 async function apiFetch(url, options = {}) {
-  const token = getToken();
+  const token = options._omitStoredToken ? null : getToken();
   const headers = Object.assign({}, options.headers || {});
 
   if (token) {
@@ -4460,9 +4460,12 @@ function bindPasswordVisibilityToggles() {
   });
 }
 
-async function loadCurrentUser() {
+async function loadCurrentUser(options = {}) {
   try {
-    const res = await apiFetch('/api/auth/me', { _skipAuthRedirect: true });
+    const res = await apiFetch('/api/auth/me', {
+      _skipAuthRedirect: true,
+      _omitStoredToken: options.cookieOnly === true,
+    });
     if (!res.ok) return null;
     const payload = await res.json();
     portalSmtpConfigured = payload && payload.emailConfigured !== false && payload.smtpConfigured !== false;
@@ -10692,7 +10695,7 @@ async function initPortalPage() {
       );
     }
 
-    const user = await loadCurrentUser();
+    const user = await loadCurrentUser({ cookieOnly: true });
     if (user) {
       window.location.href = user && user.homePath ? user.homePath : routeForRole(user.role, user.portalScope);
     }
@@ -10873,7 +10876,7 @@ async function initPortalPage() {
       setMessage(registerMsg, 'Application received. Create your employee portal account to continue.', 'success');
     }
 
-    const user = await loadCurrentUser();
+    const user = await loadCurrentUser({ cookieOnly: true });
     if (user) {
       window.location.href = user && user.homePath ? user.homePath : routeForRole(user.role, user.portalScope);
     }

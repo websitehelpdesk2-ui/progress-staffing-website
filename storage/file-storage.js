@@ -56,21 +56,43 @@ function resolveUploadDir() {
   return resolved;
 }
 
-const storageBackend = resolveStorageBackend();
-const uploadDir = storageBackend === 'local' ? resolveUploadDir() : null;
+let storageBackend = null;
+let uploadDir = null;
+let s3Client = null;
+let s3Bucket = '';
+let storageInitError = null;
+let storageInitialized = false;
 
-const s3Client = storageBackend === 's3'
-  ? new S3Client({
-      region: String(process.env.STORAGE_S3_REGION || '').trim(),
-      endpoint: String(process.env.STORAGE_S3_ENDPOINT || '').trim() || undefined,
-      forcePathStyle: String(process.env.STORAGE_S3_FORCE_PATH_STYLE || '').trim().toLowerCase() === 'true',
-      credentials: {
-        accessKeyId: String(process.env.STORAGE_S3_ACCESS_KEY_ID || '').trim(),
-        secretAccessKey: String(process.env.STORAGE_S3_SECRET_ACCESS_KEY || '').trim(),
-      },
-    })
-  : null;
-const s3Bucket = String(process.env.STORAGE_S3_BUCKET || '').trim();
+function initializeStorage() {
+  if (storageInitialized) return;
+  storageInitialized = true;
+
+  try {
+    storageBackend = resolveStorageBackend();
+    uploadDir = storageBackend === 'local' ? resolveUploadDir() : null;
+    s3Bucket = String(process.env.STORAGE_S3_BUCKET || '').trim();
+    s3Client = storageBackend === 's3'
+      ? new S3Client({
+          region: String(process.env.STORAGE_S3_REGION || '').trim(),
+          endpoint: String(process.env.STORAGE_S3_ENDPOINT || '').trim() || undefined,
+          forcePathStyle: String(process.env.STORAGE_S3_FORCE_PATH_STYLE || '').trim().toLowerCase() === 'true',
+          credentials: {
+            accessKeyId: String(process.env.STORAGE_S3_ACCESS_KEY_ID || '').trim(),
+            secretAccessKey: String(process.env.STORAGE_S3_SECRET_ACCESS_KEY || '').trim(),
+          },
+        })
+      : null;
+  } catch (error) {
+    storageInitError = error;
+  }
+}
+
+function ensureStorageReady() {
+  initializeStorage();
+  if (storageInitError) {
+    throw storageInitError;
+  }
+}
 
 function sanitizeNamespace(namespace) {
   return String(namespace || 'uploads').trim().toLowerCase().replace(/[^a-z0-9/_-]+/g, '-').replace(/^[-/]+|[-/]+$/g, '') || 'uploads';
@@ -90,6 +112,7 @@ function createStorageKey(namespace, originalName) {
 }
 
 function resolveStoredFilePath(storageKey) {
+  ensureStorageReady();
   return path.join(uploadDir, ...String(storageKey || '').split('/').filter(Boolean));
 }
 
@@ -105,6 +128,7 @@ function isStorageNotFoundError(error) {
 }
 
 async function storeUploadedFile(file, options = {}) {
+  ensureStorageReady();
   if (!file || !file.buffer || !Buffer.isBuffer(file.buffer)) {
     throw new Error('Uploaded file buffer is required.');
   }
@@ -127,6 +151,7 @@ async function storeUploadedFile(file, options = {}) {
 }
 
 async function deleteStoredFile(storageKey) {
+  ensureStorageReady();
   const normalizedKey = String(storageKey || '').trim();
   if (!normalizedKey) return;
 
@@ -143,6 +168,7 @@ async function deleteStoredFile(storageKey) {
 }
 
 async function sendStoredFile(res, storageKey, options = {}) {
+  ensureStorageReady();
   const normalizedKey = String(storageKey || '').trim();
   if (!normalizedKey) {
     const error = new Error('Stored file not found.');

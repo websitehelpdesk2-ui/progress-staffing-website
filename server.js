@@ -175,7 +175,9 @@ function validateEmailEnvironment() {
   const missingVars = getMissingEmailEnvVars();
   if (!missingVars.length) return;
 
-  throw new Error(`Missing required email environment variables: ${missingVars.join(', ')}`);
+  console.warn('[startup] Email delivery is disabled until Postmark settings are configured.', {
+    missingVars,
+  });
 }
 
 function serializeError(error) {

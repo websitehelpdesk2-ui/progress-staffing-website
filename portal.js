@@ -5390,6 +5390,7 @@ function renderAdminEmployeesTable() {
 function hideAdminEmployeeDetail() {
   const section = document.getElementById('adminEmployeeDetailSection');
   const msg = document.getElementById('adminEmployeeDetailMessage');
+  const downloadBtn = document.getElementById('adminEmployeeDownloadAllFilesBtn');
   const profileEl = document.getElementById('adminEmployeeProfile');
   const checklistEl = document.getElementById('adminEmployeeChecklist');
   const onboardingDetailPanel = document.getElementById('adminOnboardingFormDetailPanel');
@@ -5398,6 +5399,10 @@ function hideAdminEmployeeDetail() {
 
   if (section) section.hidden = true;
   if (msg) hideMessage(msg);
+  if (downloadBtn) {
+    downloadBtn.hidden = true;
+    delete downloadBtn.dataset.downloadUrl;
+  }
   if (profileEl) profileEl.innerHTML = '';
   if (checklistEl) checklistEl.innerHTML = '';
   if (onboardingDetailPanel) onboardingDetailPanel.hidden = true;
@@ -5412,11 +5417,76 @@ function hideAdminEmployeeDetail() {
   closePortalDrawer();
 }
 
+function parseArchiveMissingFilesHeader(response) {
+  const raw = String(response && response.headers ? response.headers.get('X-Archive-Missing-Files') || '' : '').trim();
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(decodeURIComponent(raw));
+    return Array.isArray(parsed) ? parsed.map((item) => String(item || '').trim()).filter(Boolean) : [];
+  } catch (_error) {
+    return [];
+  }
+}
+
+function getDownloadFileNameFromResponse(response, fallbackName = 'employee-documents.zip') {
+  const disposition = String(response && response.headers ? response.headers.get('Content-Disposition') || '' : '').trim();
+  const match = disposition.match(/filename="?([^";]+)"?/i);
+  return match && match[1] ? match[1] : fallbackName;
+}
+
+function triggerBlobDownload(blob, fileName) {
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = objectUrl;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+}
+
+async function handleAdminEmployeeDocumentBundleDownload() {
+  const downloadBtn = document.getElementById('adminEmployeeDownloadAllFilesBtn');
+  const msg = document.getElementById('adminEmployeeDetailMessage');
+  const downloadUrl = String(downloadBtn?.dataset?.downloadUrl || '').trim();
+  if (!downloadBtn || !downloadUrl) return;
+
+  hideMessage(msg);
+  downloadBtn.disabled = true;
+  const previousText = downloadBtn.textContent;
+  downloadBtn.textContent = 'Preparing...';
+
+  try {
+    const res = await apiFetch(downloadUrl);
+    if (!res.ok) {
+      const payload = await res.json().catch(() => ({}));
+      setMessage(msg, payload.error || 'Failed to download document bundle.', 'error');
+      return;
+    }
+
+    const blob = await res.blob();
+    triggerBlobDownload(blob, getDownloadFileNameFromResponse(res));
+
+    const missingFiles = parseArchiveMissingFilesHeader(res);
+    if (missingFiles.length) {
+      setMessage(msg, `Downloaded bundle with unavailable files: ${missingFiles.join(' | ')}`, 'error');
+    } else {
+      setMessage(msg, 'Downloaded all uploaded files.', 'success');
+    }
+  } catch (error) {
+    setMessage(msg, error && error.message ? error.message : 'Failed to download document bundle.', 'error');
+  } finally {
+    downloadBtn.disabled = false;
+    downloadBtn.textContent = previousText;
+  }
+}
+
 function renderAdminEmployeeDetail(data) {
   try {
     const section = document.getElementById('adminEmployeeDetailSection');
     const title = document.getElementById('adminEmployeeDetailTitle');
     const msg = document.getElementById('adminEmployeeDetailMessage');
+    const downloadBtn = document.getElementById('adminEmployeeDownloadAllFilesBtn');
     const profileEl = document.getElementById('adminEmployeeProfile');
     const checklistEl = document.getElementById('adminEmployeeChecklist');
 
@@ -5432,6 +5502,15 @@ function renderAdminEmployeeDetail(data) {
 
     if (title) title.textContent = `Employee Profile: ${employee.name || 'Unknown Employee'}`;
     if (msg) hideMessage(msg);
+    if (downloadBtn) {
+      const canDownloadAllFiles = Boolean(data.requiredUploadedDocumentSetComplete) && Number.isInteger(asInt(employee.id));
+      downloadBtn.hidden = !canDownloadAllFiles;
+      if (canDownloadAllFiles) {
+        downloadBtn.dataset.downloadUrl = `${getScopedEmployeeApiBasePath()}/${encodeURIComponent(String(employee.id))}/documents/download-all`;
+      } else {
+        delete downloadBtn.dataset.downloadUrl;
+      }
+    }
 
   profileEl.innerHTML = `
     ${renderEmployeeHeaderComponent(data, { surface: true })}
@@ -9066,6 +9145,7 @@ function bindAdminForms(currentUser) {
   const closeEmployeeDetailBtn = document.getElementById('adminEmployeeDetailCloseBtn');
   const backgroundSaveBtn = document.getElementById('adminEmployeeBackgroundSaveBtn');
   const backgroundUploadForm = document.getElementById('adminBackgroundUploadForm');
+  const downloadAllFilesBtn = document.getElementById('adminEmployeeDownloadAllFilesBtn');
 
   if (closeEmployeeDetailBtn) {
     closeEmployeeDetailBtn.addEventListener('click', hideAdminEmployeeDetail);
@@ -9163,6 +9243,13 @@ function bindAdminForms(currentUser) {
         uploadBtn.disabled = false;
         uploadBtn.textContent = prevText;
       }
+    });
+  }
+
+  if (downloadAllFilesBtn && downloadAllFilesBtn.dataset.bound !== '1') {
+    downloadAllFilesBtn.dataset.bound = '1';
+    downloadAllFilesBtn.addEventListener('click', () => {
+      handleAdminEmployeeDocumentBundleDownload();
     });
   }
 

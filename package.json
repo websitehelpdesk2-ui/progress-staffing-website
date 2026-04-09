@@ -28,7 +28,8 @@
     "postmark": "^4.0.7",
     "socket.io": "^4.8.1",
     "twilio": "^5.13.0",
-    "web-push": "^3.6.7"
+    "web-push": "^3.6.7",
+    "yazl": "^3.3.1"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"

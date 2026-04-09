@@ -24,12 +24,14 @@ const {
   verifyAuthenticationResponse,
 } = require('@simplewebauthn/server');
 const {
+  createStoredFileReadStream,
   deleteStoredFile,
   isStorageNotFoundError,
   localDataDir,
   sendStoredFile,
   storeUploadedFile,
 } = require('./storage/file-storage');
+const yazl = require('yazl');
 
 const app = express();
 const server = http.createServer(app);
@@ -4822,6 +4824,128 @@ function evaluateEmployeeCompliance(userId, industry, documents = []) {
   return { compliance, backgroundConsentForm, hipaaComplianceForm, handbookForm, compensationAgreementForm };
 }
 
+function evaluateRequiredUploadedDocumentSet(industry, documents = []) {
+  const requiredRules = profileForIndustry(industry).filter((rule) => Boolean(rule.required));
+  const docsByType = new Map();
+
+  documents.forEach((doc) => {
+    const type = String(doc.documentType || '').trim().toLowerCase();
+    if (!type) return;
+    if (!docsByType.has(type)) docsByType.set(type, []);
+    docsByType.get(type).push(doc);
+  });
+
+  const covidSatisfied = (docsByType.get('covid19_vaccine_card') || []).length > 0
+    || (docsByType.get('covid19_religious_exemption_form') || []).length > 0;
+
+  const missingTypes = requiredRules
+    .filter((rule) => {
+      if (rule.type === 'covid19_vaccine_card' || rule.type === 'covid19_religious_exemption_form') {
+        return !covidSatisfied;
+      }
+      return (docsByType.get(rule.type) || []).length === 0;
+    })
+    .map((rule) => rule.type);
+
+  return {
+    complete: missingTypes.length === 0,
+    requiredTypes: requiredRules.map((rule) => rule.type),
+    missingTypes,
+  };
+}
+
+function buildEmployeeDocumentBundleName(employee, prefix = 'employee-documents') {
+  const safeName = String(employee && employee.name ? employee.name : 'employee')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'employee';
+  return `${prefix}-${safeName}-${Number(employee && employee.id) || 'bundle'}.zip`;
+}
+
+function buildEmployeeDocumentArchiveEntries(documents = []) {
+  const usedNames = new Set();
+  return documents.map((doc, index) => {
+    const rawName = String(doc.originalName || '').trim() || `${String(doc.documentType || 'document').trim() || 'document'}-${Number(doc.id) || index + 1}`;
+    const ext = path.extname(rawName);
+    const base = path.basename(rawName, ext).replace(/[\\/:*?"<>|]+/g, '-').trim() || `document-${Number(doc.id) || index + 1}`;
+    const label = getDocumentTypeLabel(doc.documentType).replace(/[\\/:*?"<>|]+/g, '-').trim();
+    let archiveName = `${label || 'Document'} - ${base}${ext}`;
+    let counter = 2;
+    while (usedNames.has(archiveName.toLowerCase())) {
+      archiveName = `${label || 'Document'} - ${base} (${counter})${ext}`;
+      counter += 1;
+    }
+    usedNames.add(archiveName.toLowerCase());
+    return {
+      ...doc,
+      archiveName,
+    };
+  });
+}
+
+async function streamEmployeeDocumentArchive(res, options = {}) {
+  const employee = options.employee || {};
+  const documents = buildEmployeeDocumentArchiveEntries(Array.isArray(options.documents) ? options.documents : []);
+  const archiveName = String(options.archiveName || buildEmployeeDocumentBundleName(employee)).trim() || 'employee-documents.zip';
+  const zipFile = new yazl.ZipFile();
+  const missingEntries = [];
+  const addedEntries = [];
+
+  for (const doc of documents) {
+    try {
+      const file = await createStoredFileReadStream(doc.storedName);
+      zipFile.addReadStream(file.stream, doc.archiveName);
+      addedEntries.push(doc.archiveName);
+    } catch (error) {
+      if (isStorageNotFoundError(error)) {
+        missingEntries.push(`${doc.archiveName} (${doc.originalName || 'missing file'})`);
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  if (missingEntries.length) {
+    zipFile.addBuffer(
+      Buffer.from(`The following files were unavailable when this bundle was created:\n\n${missingEntries.join('\n')}\n`, 'utf8'),
+      'missing-files.txt'
+    );
+  }
+
+  if (!addedEntries.length) {
+    zipFile.end();
+    return {
+      streamed: false,
+      missingEntries,
+      addedEntries,
+    };
+  }
+
+  res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Content-Disposition', `attachment; filename="${archiveName.replace(/[\r\n"]/g, '')}"`);
+  res.setHeader('X-Archive-File-Count', String(addedEntries.length));
+  if (missingEntries.length) {
+    res.setHeader('X-Archive-Missing-Count', String(missingEntries.length));
+    res.setHeader('X-Archive-Missing-Files', encodeURIComponent(JSON.stringify(missingEntries)));
+  }
+
+  const outputStream = zipFile.outputStream;
+  await new Promise((resolve, reject) => {
+    outputStream.on('error', reject);
+    res.on('error', reject);
+    res.on('finish', resolve);
+    outputStream.pipe(res);
+    zipFile.end();
+  });
+
+  return {
+    streamed: true,
+    missingEntries,
+    addedEntries,
+  };
+}
+
 function computeEmployeeOnboardingStatus(isActive, compliance, backgroundStatus) {
   if (!isActive) return 'inactive';
   const bgPassed = String(backgroundStatus || '').toLowerCase() === 'passed';
@@ -4855,6 +4979,7 @@ function getEmployeeOnboardingStatus(employeeId) {
 
   const industry = inferIndustryFromApplications(applications);
   const { compliance } = evaluateEmployeeCompliance(employee.id, industry, documents);
+  const requiredUploadedDocumentSet = evaluateRequiredUploadedDocumentSet(industry, documents);
   return computeEmployeeOnboardingStatus(employee.isActive, compliance, employee.backgroundStatus);
 }
 
@@ -5700,6 +5825,8 @@ app.get('/api/portal/onboarding/employees/:id/profile', authGuard(['admin', 'onb
     applications,
     documents,
     compliance,
+    requiredUploadedDocumentSetComplete: requiredUploadedDocumentSet.complete,
+    requiredUploadedDocumentSetMissing: requiredUploadedDocumentSet.missingTypes,
     industryType: headerData.industryType,
     positionTitle: headerData.positionTitle,
     industryTrack: headerData.industryTrack,
@@ -7292,6 +7419,148 @@ app.get('/api/users/:id', authGuard(['admin']), (req, res) => {
   return res.json({ user: { ...user, profile } });
 });
 
+function listEmployeeDocumentsForBundle(userId) {
+  return db
+    .prepare(
+      `SELECT
+         id,
+         userId,
+         documentType,
+         originalName,
+         storedName,
+         mimeType,
+         fileSize,
+         expirationDate,
+         COALESCE(documentStatus, 'pending') AS documentStatus,
+         uploadedByRole,
+         createdAt
+       FROM employee_documents
+       WHERE userId = ?
+       ORDER BY createdAt DESC, id DESC`
+    )
+    .all(userId);
+}
+
+function canEmployeeBundleDocument(doc, authUser) {
+  if (!doc || !authUser) return false;
+  if (Number(doc.userId) !== Number(authUser.id)) return false;
+  if (String(doc.documentType || '').toLowerCase() === 'background_check' && String(doc.uploadedByRole || '').toLowerCase() !== 'admin') {
+    return false;
+  }
+  return true;
+}
+
+async function handleEmployeeDocumentBundleDownloadRequest(req, res, targetEmployeeId, options = {}) {
+  const employeeId = Number(targetEmployeeId);
+  if (!Number.isInteger(employeeId) || employeeId < 1) {
+    return res.status(400).json({ error: 'Invalid employee id.' });
+  }
+
+  const employee = db.prepare("SELECT id, name, email, role FROM users WHERE id = ? AND role = 'employee'").get(employeeId);
+  if (!employee) {
+    return res.status(404).json({ error: 'Employee not found.' });
+  }
+
+  if (req.auth.role === 'employee' && Number(req.auth.id) !== employeeId) {
+    return res.status(403).json({ error: 'Not authorized for this employee bundle.' });
+  }
+
+  const applications = db.prepare(
+    `SELECT industry
+     FROM applications
+     WHERE userId = ? OR email = ?
+     ORDER BY createdAt DESC`
+  ).all(employee.id, employee.email);
+  const industry = inferIndustryFromApplications(applications);
+  const track = industryToTrack(industry);
+
+  if (req.auth.role === 'admin' && !canAdminViewEmployee(req.auth, employeeId, track)) {
+    return res.status(403).json({ error: 'Forbidden - employee is outside your assigned scope.' });
+  }
+
+  const allDocuments = listEmployeeDocumentsForBundle(employeeId);
+  const requiredUploadedDocumentSet = evaluateRequiredUploadedDocumentSet(industry, allDocuments);
+  if (!requiredUploadedDocumentSet.complete) {
+    return res.status(409).json({
+      error: 'All required uploaded documents must be present before downloading the full document set.',
+      missingDocuments: requiredUploadedDocumentSet.missingTypes,
+    });
+  }
+
+  const accessibleDocuments = req.auth.role === 'employee'
+    ? allDocuments.filter((doc) => canEmployeeBundleDocument(doc, req.auth))
+    : allDocuments;
+
+  if (!accessibleDocuments.length) {
+    return res.status(404).json({ error: 'No uploaded documents are available for download.' });
+  }
+
+  console.info('[document-bundle] download requested', {
+    actorUserId: req.auth.id,
+    actorRole: req.auth.role,
+    employeeId,
+    documentCount: accessibleDocuments.length,
+    scope: options.scope || 'employee-documents',
+  });
+
+  try {
+    const archiveResult = await streamEmployeeDocumentArchive(res, {
+      employee,
+      documents: accessibleDocuments,
+      archiveName: buildEmployeeDocumentBundleName(employee, options.archiveNamePrefix || 'employee-documents'),
+    });
+
+    if (!archiveResult.streamed) {
+      return res.status(409).json({
+        error: 'None of the employee documents were available to bundle.',
+        missingFiles: archiveResult.missingEntries,
+      });
+    }
+
+    console.info('[document-bundle] download completed', {
+      actorUserId: req.auth.id,
+      employeeId,
+      addedCount: archiveResult.addedEntries.length,
+      missingCount: archiveResult.missingEntries.length,
+    });
+    return null;
+  } catch (error) {
+    logCaughtException('employee document bundle download', error, {
+      actorUserId: req.auth.id,
+      employeeId,
+      scope: options.scope || 'employee-documents',
+    });
+    if (!res.headersSent) {
+      return res.status(500).json({ error: 'Failed to create document bundle.' });
+    }
+    return null;
+  }
+}
+
+app.get('/api/admin/employees/:id/documents/download-all', authGuard(['admin']), (req, res) => {
+  handleEmployeeDocumentBundleDownloadRequest(req, res, req.params.id, {
+    scope: 'admin',
+    archiveNamePrefix: 'employee-documents',
+  });
+});
+
+app.get('/api/portal/onboarding/employees/:id/documents/download-all', authGuard(['admin']), (req, res) => {
+  if (!hasAdminScopeAccess(req.auth, ['onboarding'])) {
+    return res.status(403).json({ error: 'Forbidden for this portal scope.' });
+  }
+  handleEmployeeDocumentBundleDownloadRequest(req, res, req.params.id, {
+    scope: 'onboarding',
+    archiveNamePrefix: 'onboarding-files',
+  });
+});
+
+app.get('/api/portal/employee/documents/download-all', authGuard(['employee']), (req, res) => {
+  handleEmployeeDocumentBundleDownloadRequest(req, res, req.auth.id, {
+    scope: 'employee',
+    archiveNamePrefix: 'onboarding-files',
+  });
+});
+
 app.get('/api/portal/documents/:id/file', authGuard(), async (req, res) => {
   const docId = Number(req.params.id);
   if (!Number.isInteger(docId) || docId < 1) {
@@ -7490,6 +7759,7 @@ app.get('/api/portal/employee/dashboard', authGuard(['employee']), (req, res) =>
   const industry = inferIndustryFromApplications(applications);
   const headerData = buildEmployeeProfileHeaderData(req.auth.id, req.auth.email, { applications, profile });
   const { compliance, backgroundConsentForm, hipaaComplianceForm, handbookForm, compensationAgreementForm } = evaluateEmployeeCompliance(req.auth.id, industry, documents);
+  const requiredUploadedDocumentSet = evaluateRequiredUploadedDocumentSet(industry, documents);
   const onboardingStatus = computeEmployeeOnboardingStatus(req.auth.isActive, compliance, profile.backgroundStatus);
 
   const w4Form =
@@ -7561,6 +7831,8 @@ app.get('/api/portal/employee/dashboard', authGuard(['employee']), (req, res) =>
     applications,
     documents,
     compliance,
+    requiredUploadedDocumentSetComplete: requiredUploadedDocumentSet.complete,
+    requiredUploadedDocumentSetMissing: requiredUploadedDocumentSet.missingTypes,
     industryType: headerData.industryType,
     positionTitle: headerData.positionTitle,
     industryTrack: headerData.industryTrack,

@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { PassThrough } = require('stream');
 const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
 
 function isProductionDeployment() {
@@ -219,7 +220,47 @@ async function sendStoredFile(res, storageKey, options = {}) {
   });
 }
 
+async function createStoredFileReadStream(storageKey) {
+  ensureStorageReady();
+  const normalizedKey = String(storageKey || '').trim();
+  if (!normalizedKey) {
+    const error = new Error('Stored file not found.');
+    error.code = 'ENOENT';
+    throw error;
+  }
+
+  if (storageBackend === 's3') {
+    const response = await s3Client.send(new GetObjectCommand({
+      Bucket: s3Bucket,
+      Key: normalizedKey,
+    }));
+
+    const body = response.Body;
+    if (!body || typeof body.pipe !== 'function') {
+      throw new Error('Stored file body stream is unavailable.');
+    }
+
+    const stream = new PassThrough();
+    body.on('error', (error) => stream.destroy(error));
+    body.pipe(stream);
+    return {
+      stream,
+      contentLength: response.ContentLength != null ? Number(response.ContentLength) : null,
+      contentType: response.ContentType || null,
+    };
+  }
+
+  const fullPath = resolveStoredFilePath(normalizedKey);
+  const stats = await fs.promises.stat(fullPath);
+  return {
+    stream: fs.createReadStream(fullPath),
+    contentLength: Number(stats.size) || null,
+    contentType: null,
+  };
+}
+
 module.exports = {
+  createStoredFileReadStream,
   deleteStoredFile,
   isProductionDeployment,
   isStorageNotFoundError,

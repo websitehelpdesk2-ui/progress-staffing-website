@@ -2674,6 +2674,23 @@ function openMessagesTask() {
   }
 }
 
+function openScopedAdminTimesheetTask() {
+  const pageType = String(document.body?.dataset?.portalPage || '').trim().toLowerCase();
+  if (pageType === 'scheduling') {
+    const section = document.getElementById('schedulingTimesheetsTbody')?.closest('.portal-section');
+    if (section) {
+      section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    return;
+  }
+
+  const section = document.getElementById('adminTimesheetsSection');
+  if (section) {
+    openPortalDrawerById('adminTimesheetsSection');
+    section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
 async function handlePortalNotificationAction(item) {
   if (!item) return;
   await markPortalNotificationRead(item.id);
@@ -2681,12 +2698,12 @@ async function handlePortalNotificationAction(item) {
   const pageType = String(document.body?.dataset?.portalPage || '').trim().toLowerCase();
   const metadata = item.metadata || {};
 
-  if (item.taskType === 'document_review' && pageType === 'admin') {
+  if (item.taskType === 'document_review' && (pageType === 'admin' || pageType === 'onboarding')) {
     await openAdminDocumentTask(asInt(metadata.employeeId), asInt(metadata.docId || item.taskRefId));
     return;
   }
 
-  if (item.taskType === 'contract_admin_sign' && pageType === 'admin') {
+  if (item.taskType === 'contract_admin_sign' && (pageType === 'admin' || pageType === 'contracts')) {
     await openAdminContractTask(asInt(metadata.contractId || item.taskRefId), metadata.track || '');
     return;
   }
@@ -2701,7 +2718,7 @@ async function handlePortalNotificationAction(item) {
     return;
   }
 
-  if ((item.taskType === 'contract_renewal' || item.taskType === 'contract_cancel_confirm') && pageType === 'admin') {
+  if ((item.taskType === 'contract_renewal' || item.taskType === 'contract_cancel_confirm') && (pageType === 'admin' || pageType === 'contracts')) {
     await openAdminContractTask(asInt(metadata.contractId || item.taskRefId), metadata.track || '');
     return;
   }
@@ -2726,11 +2743,7 @@ async function handlePortalNotificationAction(item) {
   }
 
   if (item.category === 'timesheet' && adminPages.has(pageType)) {
-    const tsSection = document.getElementById('adminTimesheetsSection');
-    if (tsSection) {
-      openPortalDrawerById('adminTimesheetsSection');
-      tsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
+    openScopedAdminTimesheetTask();
     return;
   }
 
@@ -2942,11 +2955,11 @@ async function handlePortalNotificationIntent(currentUser) {
     openMessagesTask();
   }
 
-  if (task === 'document-review' && String(document.body?.dataset?.portalPage || '').toLowerCase() === 'admin') {
+  if (task === 'document-review' && ['admin', 'onboarding'].includes(String(document.body?.dataset?.portalPage || '').toLowerCase())) {
     await openAdminDocumentTask(asInt(params.get('employeeId')), asInt(params.get('docId')));
   }
 
-  if (task === 'admin-contract' && String(document.body?.dataset?.portalPage || '').toLowerCase() === 'admin') {
+  if (task === 'admin-contract' && ['admin', 'contracts'].includes(String(document.body?.dataset?.portalPage || '').toLowerCase())) {
     await openAdminContractTask(asInt(params.get('contractId')), params.get('track') || '');
   }
 
@@ -2964,16 +2977,15 @@ async function handlePortalNotificationIntent(currentUser) {
     }
   }
 
-  if (task === 'employee-profile' && String(document.body?.dataset?.portalPage || '').toLowerCase() === 'admin') {
+  if (task === 'employee-profile' && ['admin', 'onboarding', 'scheduling'].includes(String(document.body?.dataset?.portalPage || '').toLowerCase())) {
     const employeeId = asInt(params.get('employeeId'));
     if (Number.isInteger(employeeId) && employeeId > 0) {
       await loadAdminEmployeeDetail(employeeId);
     }
   }
 
-  if (task === 'timesheet-review' && String(document.body?.dataset?.portalPage || '').toLowerCase() === 'admin') {
-    const timesheetSection = document.getElementById('adminTimesheetsSection');
-    if (timesheetSection) timesheetSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  if (task === 'timesheet-review' && ['admin', 'scheduling'].includes(String(document.body?.dataset?.portalPage || '').toLowerCase())) {
+    openScopedAdminTimesheetTask();
   }
 
   clearUrlParams(['task', 'employeeId', 'docId', 'contractId', 'track', 'timesheetId', 'documentType']);

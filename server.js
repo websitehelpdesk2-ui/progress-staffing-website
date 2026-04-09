@@ -72,6 +72,7 @@ const SENSITIVE_PASSKEY_ACTIONS = new Set([
 const passkeyChallenges = new Map();
 const passkeyActionProofs = new Map();
 const manualDocumentReminderInFlight = new Map();
+const notificationDispatchInFlight = new Map();
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
 const EMAIL_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000;
 const AUTO_DB_BOOTSTRAP = !isProductionDeployment() && String(process.env.AUTO_DB_BOOTSTRAP || '').trim().toLowerCase() === 'true';
@@ -1720,18 +1721,45 @@ function emitDomainSyncToAdmins(scopes, domains) {
 }
 
 function notifyContractsPortalActivityToAdmins(actorUserId, title, body, metadata = {}) {
-  getActiveAdminUsersForScopes(['contracts']).forEach((admin) => {
-    if (Number(admin.id) === Number(actorUserId)) return;
-    createPortalNotification({
-      userId: Number(admin.id),
-      actorUserId: Number(actorUserId),
-      category: 'contract',
-      title: String(title || 'Contracts activity'),
-      body: String(body || 'A contracts portal update was made.'),
-      url: buildPortalPath(getPortalPathForUser(admin)),
-      metadata,
-      syncDomains: ['admin-dashboard', 'contracts'],
-    });
+  const contractId = Number(metadata && metadata.contractId);
+  const track = metadata && metadata.track ? metadata.track : metadata && metadata.industryTrack ? metadata.industryTrack : '';
+  dispatchNotificationTargets({
+    eventType: 'contract-activity',
+    dedupeKey: `contracts-portal:${contractId || 'general'}:${String(title || '').trim().toLowerCase()}`,
+    targets: getActiveAdminUsersForScopes(['contracts']).filter((admin) => Number(admin.id) !== Number(actorUserId)).map((admin) => {
+      const links = buildNotificationLinkBundle(contractId > 0
+        ? buildPortalPath(getPortalPathForUser(admin), { task: 'admin-contract', contractId, track })
+        : buildPortalPath(getPortalPathForUser(admin)));
+      return {
+        userId: Number(admin.id),
+        actorUserId: Number(actorUserId),
+        category: 'contract',
+        title: String(title || 'Contracts activity'),
+        body: String(body || 'A contracts portal update was made.'),
+        relativeUrl: links.relativeUrl,
+        portalNotification: {
+          taskType: contractId > 0 ? 'contract_admin_sign' : null,
+          taskRefId: contractId > 0 ? contractId : null,
+          metadata,
+          syncDomains: ['admin-dashboard', 'contracts'],
+        },
+        email: {
+          to: admin.email,
+          subject: String(title || 'Contracts activity'),
+          text: `${String(body || 'A contracts portal update was made.')}\n\nOpen it here: ${links.directUrl}`,
+          html: `<p>${escapeHtmlText(String(body || 'A contracts portal update was made.'))}</p><p><a href="${links.directUrl}">Open contract activity</a></p>`,
+          logContext: `contract_activity:${contractId || 'general'}:admin:${admin.id}`,
+        },
+        push: {
+          payload: {
+            title: String(title || 'Contracts activity'),
+            body: String(body || 'A contracts portal update was made.'),
+            url: links.relativeUrl,
+            tag: `contract-activity-${contractId || 'general'}-${admin.id}`,
+          },
+        },
+      };
+    }),
   });
 }
 
@@ -2069,7 +2097,38 @@ function buildDocumentReminderEmailPayload({ employeeName, title, body, directUr
   };
 }
 
-function normalizeDeliveryChannelResult(channel, result) {
+function sanitizeNotificationPortalPath(relativePath) {
+  const raw = String(relativePath || '').trim();
+  if (!raw) return '';
+
+  try {
+    const url = new URL(raw.startsWith('/') ? raw : `/${raw}`, APP_URL_PLACEHOLDER_BASE);
+    if (!url.pathname.startsWith('/portal-')) return '';
+    if (url.pathname === '/portal-login') return '';
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch (_error) {
+    return '';
+  }
+}
+
+function buildNotificationLinkBundle(relativePath) {
+  const safeRelativePath = sanitizeNotificationPortalPath(relativePath);
+  if (!safeRelativePath) {
+    return {
+      relativeUrl: '',
+      directUrl: '',
+      fallbackUrl: '',
+    };
+  }
+
+  return {
+    relativeUrl: safeRelativePath,
+    directUrl: absolutePortalUrl(safeRelativePath),
+    fallbackUrl: absolutePortalUrl(buildPortalPath('/portal-login', { redirect: safeRelativePath })),
+  };
+}
+
+function normalizeNotificationChannelResult(channel, result) {
   if (result && result.sent) {
     return { channel, status: 'sent', details: result };
   }
@@ -2088,11 +2147,17 @@ function normalizeDeliveryChannelResult(channel, result) {
   };
 }
 
-async function executeReminderChannel(channel, handler) {
+async function executeNotificationChannel(eventType, channel, handler) {
   try {
     const result = await handler();
-    const normalized = normalizeDeliveryChannelResult(channel, result);
-    console.info('[document-reminder] channel completed', normalized);
+    const normalized = normalizeNotificationChannelResult(channel, result);
+    console.info('[notification-route] channel completed', {
+      eventType,
+      channel,
+      status: normalized.status,
+      reason: normalized.reason || null,
+      details: normalized.details || null,
+    });
     return normalized;
   } catch (error) {
     const failure = {
@@ -2100,13 +2165,39 @@ async function executeReminderChannel(channel, handler) {
       status: 'failed',
       reason: error && error.message ? error.message : 'delivery-failed',
     };
-    console.error('[document-reminder] channel failed', {
+    console.error('[notification-route] channel failed', {
+      eventType,
       channel,
       message: failure.reason,
       stack: error && error.stack ? error.stack : null,
     });
     return failure;
   }
+}
+
+function normalizeDeliveryChannelResult(channel, result) {
+  return normalizeNotificationChannelResult(channel, result);
+}
+
+async function executeReminderChannel(channel, handler) {
+  return executeNotificationChannel('document-reminder', channel, handler);
+}
+
+function makeNotificationDispatchLockKey(eventType, dedupeKey) {
+  return `${String(eventType || 'event').trim().toLowerCase()}:${String(dedupeKey || '').trim()}`;
+}
+
+function tryAcquireNotificationDispatchLock(eventType, dedupeKey) {
+  const normalizedKey = makeNotificationDispatchLockKey(eventType, dedupeKey);
+  if (!normalizedKey || normalizedKey.endsWith(':')) return null;
+  if (notificationDispatchInFlight.has(normalizedKey)) return null;
+  notificationDispatchInFlight.set(normalizedKey, Date.now());
+  return normalizedKey;
+}
+
+function releaseNotificationDispatchLock(lockKey) {
+  if (!lockKey) return;
+  notificationDispatchInFlight.delete(lockKey);
 }
 
 function makeManualDocumentReminderLockKey(employeeUserId, documentType) {
@@ -2125,6 +2216,113 @@ function releaseManualDocumentReminderLock(lockKey) {
   manualDocumentReminderInFlight.delete(lockKey);
 }
 
+async function dispatchNotificationTargets(options = {}) {
+  const eventType = String(options.eventType || 'activity').trim().toLowerCase() || 'activity';
+  const dedupeKey = String(options.dedupeKey || '').trim();
+  const targets = Array.isArray(options.targets) ? options.targets.filter(Boolean) : [];
+  let lockKey = null;
+
+  if (dedupeKey) {
+    lockKey = tryAcquireNotificationDispatchLock(eventType, dedupeKey);
+    if (!lockKey) {
+      console.info('[notification-route] duplicate event suppressed', { eventType, dedupeKey });
+      return { sent: false, skipped: true, reason: 'duplicate-event', recipients: [] };
+    }
+  }
+
+  try {
+    const recipients = await Promise.all(targets.map(async (target) => {
+      const delivery = {};
+      const tasks = [];
+      const targetUserId = Number(target.userId);
+      const actorUserId = target.actorUserId === undefined || target.actorUserId === null || target.actorUserId === ''
+        ? null
+        : Number(target.actorUserId);
+
+      if (target.portalNotification && Number.isInteger(targetUserId) && targetUserId > 0) {
+        tasks.push(
+          executeNotificationChannel(eventType, 'portal', async () => {
+            const notificationId = createPortalNotification({
+              userId: targetUserId,
+              actorUserId: Number.isInteger(actorUserId) && actorUserId > 0 ? actorUserId : null,
+              category: target.category || 'activity',
+              title: target.title,
+              body: target.body,
+              url: target.relativeUrl || null,
+              taskType: target.portalNotification.taskType || null,
+              taskRefId: target.portalNotification.taskRefId || null,
+              metadata: target.portalNotification.metadata || {},
+              syncDomains: target.portalNotification.syncDomains || [],
+              isCompleted: target.portalNotification.isCompleted === true,
+            });
+            return notificationId
+              ? { sent: true, notificationId }
+              : { skipped: true, reason: 'portal-notification-not-created' };
+          }).then((result) => {
+            delivery.portal = result;
+          })
+        );
+      }
+
+      if (target.email) {
+        tasks.push(
+          executeNotificationChannel(eventType, 'email', async () => sendEmailNotification(
+            target.email.to,
+            target.email.subject,
+            target.email.text,
+            target.email.html,
+            target.email.userId === undefined ? (Number.isInteger(targetUserId) && targetUserId > 0 ? targetUserId : null) : target.email.userId,
+            { logContext: target.email.logContext || `${eventType}:email` }
+          )).then((result) => {
+            delivery.email = result;
+          })
+        );
+      }
+
+      if (target.push) {
+        const pushUserId = Number(target.push.userId === undefined ? targetUserId : target.push.userId);
+        if (Number.isInteger(pushUserId) && pushUserId > 0) {
+          tasks.push(
+            executeNotificationChannel(eventType, 'push', async () => sendPushNotificationToUser(
+              pushUserId,
+              target.push.payload || {},
+              target.push.options || {}
+            )).then((result) => {
+              delivery.push = result;
+            })
+          );
+        }
+      }
+
+      if (target.sms) {
+        tasks.push(
+          executeNotificationChannel(eventType, 'sms', async () => sendSmsNotification(
+            target.sms.to,
+            target.sms.body,
+            target.sms.userId === undefined ? (Number.isInteger(targetUserId) && targetUserId > 0 ? targetUserId : null) : target.sms.userId
+          )).then((result) => {
+            delivery.sms = result;
+          })
+        );
+      }
+
+      await Promise.all(tasks);
+
+      return {
+        userId: Number.isInteger(targetUserId) && targetUserId > 0 ? targetUserId : null,
+        delivery,
+      };
+    }));
+
+    return {
+      sent: recipients.some((recipient) => Object.values(recipient.delivery || {}).some((entry) => entry && entry.status === 'sent')),
+      recipients,
+    };
+  } finally {
+    releaseNotificationDispatchLock(lockKey);
+  }
+}
+
 function buildShiftNotificationCopy(shift, actionLabel) {
   const companyName = shift.companyName || shift.jobsiteName || 'Progress Staffing';
   const shiftLabel = shift.title || shift.shiftTitle || 'Open shift';
@@ -2137,27 +2335,36 @@ async function notifyUserAboutShift(user, shift, options = {}) {
   const relativeUrl = options.url || '/portal-employee';
   const title = options.title || 'Shift update';
   const body = options.body || buildShiftNotificationCopy(shift, 'Shift update');
-  const absoluteUrl = absolutePortalUrl(relativeUrl);
-  const phone = getUserPhoneNumber(user.id, user.role);
+  const links = buildNotificationLinkBundle(relativeUrl);
 
-  await Promise.allSettled([
-    sendEmailNotification(
-      user.email,
-      title,
-      `${body}\n\nOpen the portal: ${absoluteUrl}`,
-      `<p>${body}</p><p><a href="${absoluteUrl}">Open the portal</a></p>`,
-      user.id
-    ),
-    sendSmsNotification(phone, `${body} Open: ${absoluteUrl}`, user.id),
-    sendPushNotificationToUser(user.id, {
+  await dispatchNotificationTargets({
+    eventType: 'scheduling-activity',
+    dedupeKey: `${options.tag || `shift-${shift.id || shift.assignmentId || 'update'}`}:${user.id}`,
+    targets: [{
+      userId: user.id,
+      category: 'activity',
       title,
       body,
-      url: relativeUrl,
-      tag: options.tag || `shift-${shift.id || shift.assignmentId || 'update'}`,
-      actions: options.actions || [],
-      data: options.data || {},
-    }),
-  ]);
+      relativeUrl: links.relativeUrl,
+      email: {
+        to: user.email,
+        subject: title,
+        text: `${body}\n\nOpen the scheduling item: ${links.directUrl}`,
+        html: `<p>${escapeHtmlText(body)}</p><p><a href="${links.directUrl}">Open the scheduling item</a></p>`,
+        logContext: `scheduling_activity:${options.tag || shift.id || shift.assignmentId || 'update'}`,
+      },
+      push: {
+        payload: {
+          title,
+          body,
+          url: links.relativeUrl,
+          tag: options.tag || `shift-${shift.id || shift.assignmentId || 'update'}`,
+          actions: options.actions || [],
+          data: options.data || {},
+        },
+      },
+    }],
+  });
 }
 
 function getEmployeesMatchingShiftTitle(shiftTitle, excludedUserIds = new Set()) {
@@ -2225,41 +2432,42 @@ async function notifyAdminsAboutDocumentUpload(employeeUserId, docId, documentTy
   const admins = getActiveAdminUsersForScopes(['onboarding']);
   const typeName = documentType.replace(/_/g, ' ');
   const body = `${employee.name || 'An employee'} uploaded a ${typeName} document that requires your review.`;
-  await Promise.allSettled(
-    admins.map((admin) => {
-      const portalPath = getPortalPathForUser(admin);
-      const url = buildPortalPath(portalPath, { task: 'document-review', employeeId: employeeUserId, docId });
-      const absoluteUrl = absolutePortalUrl(url);
-      return (
-      Promise.allSettled([
-        sendEmailNotification(
-          admin.email,
-          'Document Upload – Review Required',
-          `${body}\n\nReview it in the admin portal: ${absoluteUrl}`,
-          `<p>${body}</p><p><a href="${absoluteUrl}">Open Admin Portal</a></p>`,
-          admin.id
-        ),
-        sendPushNotificationToUser(admin.id, {
-          title: 'Document Upload – Review Required',
-          body,
-          url,
-          tag: `doc-upload-${docId}`,
-        }),
-        Promise.resolve(createPortalNotification({
-          userId: admin.id,
-          actorUserId: employeeUserId,
-          category: 'document',
-          title: 'Document Upload – Review Required',
-          body,
-          url,
+  await dispatchNotificationTargets({
+    eventType: 'onboarding-document-upload',
+    dedupeKey: `${employeeUserId}:${docId}:${documentType}`,
+    targets: admins.map((admin) => {
+      const links = buildNotificationLinkBundle(buildPortalPath(getPortalPathForUser(admin), { task: 'document-review', employeeId: employeeUserId, docId }));
+      return {
+        userId: admin.id,
+        actorUserId: employeeUserId,
+        category: 'document',
+        title: 'Document Upload – Review Required',
+        body,
+        relativeUrl: links.relativeUrl,
+        portalNotification: {
           taskType: 'document_review',
           taskRefId: docId,
           metadata: { employeeId: employeeUserId, docId, documentType },
           syncDomains: ['admin-dashboard'],
-        })),
-      ])
-    ); })
-  );
+        },
+        email: {
+          to: admin.email,
+          subject: 'Document Upload – Review Required',
+          text: `${body}\n\nReview it here: ${links.directUrl}`,
+          html: `<p>${escapeHtmlText(body)}</p><p><a href="${links.directUrl}">Open review task</a></p>`,
+          logContext: `onboarding_document_upload:${docId}`,
+        },
+        push: {
+          payload: {
+            title: 'Document Upload – Review Required',
+            body,
+            url: links.relativeUrl,
+            tag: `doc-upload-${docId}`,
+          },
+        },
+      };
+    }),
+  });
 }
 
 async function notifyEmployeeAboutDocumentReview(employeeUserId, docId, documentType, action) {
@@ -2350,25 +2558,27 @@ async function notifyAdminsAboutTimesheetApproved(payload) {
 
   const admins = getActiveAdminUsersForScopes(['scheduling']);
   await Promise.allSettled([
-    sendEmailNotification(TIMESHEET_APPROVAL_ALERT_EMAIL, subject, text, html),
-    ...admins.map((admin) => {
-      const portalPath = getPortalPathForUser(admin);
-      const reviewUrl = buildPortalPath(portalPath, { task: 'timesheet-review', timesheetId: payload.timesheetId || '' });
-      const adminText = [
-        'A timesheet has been approved and signed in the client/jobsite portal.',
-        '',
-        `Employee: ${employeeName}`,
-        `Position: ${employeePosition}`,
-        `Facility: ${facility}`,
-        `Street Address: ${streetAddress}`,
-        `Date/Time Worked: ${workedWindow}`,
-        `Submission Type: ${sourceLabel}`,
-        `Jobsite Signature: ${approvalSignature}`,
-        `Approved At: ${approvedAt}`,
-        '',
-        `Review in portal: ${absolutePortalUrl(reviewUrl)}`,
-      ].join('\n');
-      const adminHtml = `
+    sendEmailNotification(TIMESHEET_APPROVAL_ALERT_EMAIL, subject, text, html, null, { logContext: `timesheet_activity:approved:${payload.timesheetId || 'event'}:alert` }),
+    dispatchNotificationTargets({
+      eventType: 'timesheet-activity',
+      dedupeKey: `approved:${payload.timesheetId || 'event'}:admins`,
+      targets: admins.map((admin) => {
+        const links = buildNotificationLinkBundle(buildPortalPath(getPortalPathForUser(admin), { task: 'timesheet-review', timesheetId: payload.timesheetId || '' }));
+        const adminText = [
+          'A timesheet has been approved and signed in the client/jobsite portal.',
+          '',
+          `Employee: ${employeeName}`,
+          `Position: ${employeePosition}`,
+          `Facility: ${facility}`,
+          `Street Address: ${streetAddress}`,
+          `Date/Time Worked: ${workedWindow}`,
+          `Submission Type: ${sourceLabel}`,
+          `Jobsite Signature: ${approvalSignature}`,
+          `Approved At: ${approvedAt}`,
+          '',
+          `Review in portal: ${links.directUrl}`,
+        ].join('\n');
+        const adminHtml = `
     <p>A timesheet has been approved and signed in the client/jobsite portal.</p>
     <ul>
       <li><strong>Employee:</strong> ${escapeHtmlText(employeeName)}</li>
@@ -2380,49 +2590,46 @@ async function notifyAdminsAboutTimesheetApproved(payload) {
       <li><strong>Jobsite Signature:</strong> ${escapeHtmlText(approvalSignature)}</li>
       <li><strong>Approved At:</strong> ${escapeHtmlText(approvedAt)}</li>
     </ul>
-    <p><a href="${absolutePortalUrl(reviewUrl)}">Open Admin Portal</a></p>
+    <p><a href="${links.directUrl}">Open review task</a></p>
   `;
-      return (
-      Promise.allSettled([
-        sendEmailNotification(admin.email, subject, adminText, adminHtml, admin.id),
-        sendPushNotificationToUser(admin.id, {
-          title: 'Timesheet Approved',
-          body: `${employeeName} - ${facility} (${workedWindow})`,
-          url: reviewUrl,
-          tag: `timesheet-approved-${payload.timesheetId || 'event'}`,
-        }),
-        Promise.resolve(createPortalNotification({
+        return {
           userId: admin.id,
           category: 'timesheet',
           title: 'Timesheet Approved',
           body: `${employeeName} approved a timesheet for ${facility}.`,
-          url: reviewUrl,
-          metadata: { timesheetId: payload.timesheetId || null },
-          syncDomains: ['admin-dashboard', 'timesheets'],
-        })),
-      ])
-    ); }),
+          relativeUrl: links.relativeUrl,
+          portalNotification: {
+            metadata: { timesheetId: payload.timesheetId || null },
+            syncDomains: ['admin-dashboard', 'timesheets'],
+          },
+          email: {
+            to: admin.email,
+            subject,
+            text: adminText,
+            html: adminHtml,
+            logContext: `timesheet_activity:approved:${payload.timesheetId || 'event'}:admin:${admin.id}`,
+          },
+          push: {
+            payload: {
+              title: 'Timesheet Approved',
+              body: `${employeeName} - ${facility} (${workedWindow})`,
+              url: links.relativeUrl,
+              tag: `timesheet-approved-${payload.timesheetId || 'event'}`,
+            },
+          },
+        };
+      }),
+    }),
   ]);
 }
 
 async function notifyAdminsAboutFormSubmission(employeeUserId, employeeName, formType, formLabel) {
-  const admins = getActiveAdminUsersForScopes(['onboarding']);
-  if (!admins.length) return;
-  const title = 'Onboarding Form Signed';
-  const body = `${employeeName} signed the ${formLabel}.`;
-  await Promise.allSettled(admins.map((admin) => {
-    const url = buildPortalPath(getPortalPathForUser(admin), { task: 'employee-profile', employeeId: employeeUserId });
-    return Promise.resolve(createPortalNotification({
-      userId: admin.id,
-      actorUserId: employeeUserId,
-      category: 'document',
-      title,
-      body,
-      url,
-      metadata: { employeeId: employeeUserId, formType },
-      syncDomains: ['admin-dashboard'],
-    }));
-  }));
+  console.info('[notification-route] onboarding form notification suppressed', {
+    employeeUserId,
+    employeeName,
+    formType,
+    formLabel,
+  });
 }
 
 async function notifyEmployeeAboutBackgroundStatusChange(employeeUserId, statusValue) {
@@ -2480,23 +2687,10 @@ async function notifyAdminsAboutNewRegistration(userId, userName, userRole, comp
 }
 
 async function notifyAdminsAboutSsnSubmission(employeeUserId, employeeName) {
-  const admins = getActiveAdminUsersForScopes(['onboarding']);
-  if (!admins.length) return;
-  const title = 'Employee SSN Submitted';
-  const body = `${employeeName} submitted their SSN.`;
-  await Promise.allSettled(admins.map((admin) => {
-    const url = buildPortalPath(getPortalPathForUser(admin), { task: 'employee-profile', employeeId: employeeUserId });
-    return Promise.resolve(createPortalNotification({
-      userId: admin.id,
-      actorUserId: employeeUserId,
-      category: 'activity',
-      title,
-      body,
-      url,
-      metadata: { employeeId: employeeUserId },
-      syncDomains: ['admin-dashboard'],
-    }));
-  }));
+  console.info('[notification-route] onboarding ssn notification suppressed', {
+    employeeUserId,
+    employeeName,
+  });
 }
 
 async function notifyAdminsAboutTimesheetSubmittedByEmployee(payload) {
@@ -2507,19 +2701,40 @@ async function notifyAdminsAboutTimesheetSubmittedByEmployee(payload) {
   const periodEnd = String(payload.periodEnd || '').trim();
   const title = 'Timesheet Submitted';
   const body = `${employeeName} submitted a timesheet (${periodStart} to ${periodEnd}).`;
-  await Promise.allSettled(admins.map((admin) => {
-    const url = buildPortalPath(getPortalPathForUser(admin), { task: 'timesheet-review', timesheetId: payload.timesheetId });
-    return Promise.resolve(createPortalNotification({
-      userId: admin.id,
-      actorUserId: payload.employeeUserId || null,
-      category: 'timesheet',
-      title,
-      body,
-      url,
-      metadata: { timesheetId: payload.timesheetId, employeeUserId: payload.employeeUserId },
-      syncDomains: ['admin-dashboard', 'timesheets'],
-    }));
-  }));
+  await dispatchNotificationTargets({
+    eventType: 'timesheet-activity',
+    dedupeKey: `submitted:${payload.timesheetId}:admins`,
+    targets: admins.map((admin) => {
+      const links = buildNotificationLinkBundle(buildPortalPath(getPortalPathForUser(admin), { task: 'timesheet-review', timesheetId: payload.timesheetId }));
+      return {
+        userId: admin.id,
+        actorUserId: payload.employeeUserId || null,
+        category: 'timesheet',
+        title,
+        body,
+        relativeUrl: links.relativeUrl,
+        portalNotification: {
+          metadata: { timesheetId: payload.timesheetId, employeeUserId: payload.employeeUserId },
+          syncDomains: ['admin-dashboard', 'timesheets'],
+        },
+        email: {
+          to: admin.email,
+          subject: title,
+          text: `${body}\n\nReview it here: ${links.directUrl}`,
+          html: `<p>${escapeHtmlText(body)}</p><p><a href="${links.directUrl}">Open timesheet review</a></p>`,
+          logContext: `timesheet_activity:submitted:${payload.timesheetId}:admin:${admin.id}`,
+        },
+        push: {
+          payload: {
+            title,
+            body,
+            url: links.relativeUrl,
+            tag: `timesheet-submitted-${payload.timesheetId}`,
+          },
+        },
+      };
+    }),
+  });
 }
 
 async function notifyJobsiteAboutTimesheetSubmitted(payload) {
@@ -2537,34 +2752,39 @@ async function notifyJobsiteAboutTimesheetSubmitted(payload) {
   const sourceLabel = source === 'paper' ? 'Paper Upload' : source === 'manual' ? 'Manual Entry' : 'Clock In / Clock Out';
   const title = 'Timesheet Submitted for Review';
   const body = `${employeeName} submitted a ${sourceLabel} timesheet (${periodStart} to ${periodEnd}).`;
-  const url = buildPortalPath('/portal-jobsite', { task: 'timesheet-review', timesheetId });
-  const absoluteUrl = absolutePortalUrl(url);
+  const links = buildNotificationLinkBundle(buildPortalPath('/portal-jobsite', { task: 'timesheet-review', timesheetId }));
 
-  await Promise.allSettled([
-    sendEmailNotification(
-      jobsite.email,
-      title,
-      `${body}\n\nReview in portal: ${absoluteUrl}`,
-      `<p>${escapeHtmlText(body)}</p><p><a href="${absoluteUrl}">Open Portal</a></p>`,
-      jobsite.id
-    ),
-    sendPushNotificationToUser(jobsite.id, {
-      title,
-      body,
-      url,
-      tag: `timesheet-submitted-${timesheetId}`,
-    }),
-    Promise.resolve(createPortalNotification({
+  await dispatchNotificationTargets({
+    eventType: 'timesheet-activity',
+    dedupeKey: `submitted:${timesheetId}:jobsite:${jobsite.id}`,
+    targets: [{
       userId: jobsite.id,
       actorUserId: Number.isInteger(Number(payload.actorUserId)) ? Number(payload.actorUserId) : null,
       category: 'timesheet',
       title,
       body,
-      url,
-      metadata: { timesheetId, source, employeeUserId: Number(payload.employeeUserId) || null },
-      syncDomains: ['timesheets', 'jobsite-dashboard'],
-    })),
-  ]);
+      relativeUrl: links.relativeUrl,
+      portalNotification: {
+        metadata: { timesheetId, source, employeeUserId: Number(payload.employeeUserId) || null },
+        syncDomains: ['timesheets', 'jobsite-dashboard'],
+      },
+      email: {
+        to: jobsite.email,
+        subject: title,
+        text: `${body}\n\nReview it here: ${links.directUrl}`,
+        html: `<p>${escapeHtmlText(body)}</p><p><a href="${links.directUrl}">Open timesheet review</a></p>`,
+        logContext: `timesheet_activity:submitted:${timesheetId}:jobsite:${jobsite.id}`,
+      },
+      push: {
+        payload: {
+          title,
+          body,
+          url: links.relativeUrl,
+          tag: `timesheet-submitted-${timesheetId}`,
+        },
+      },
+    }],
+  });
 }
 
 async function notifyEmployeeAboutTimesheetApproved(payload) {
@@ -2579,33 +2799,38 @@ async function notifyEmployeeAboutTimesheetApproved(payload) {
   const periodEnd = String(payload.periodEnd || '').trim() || 'N/A';
   const title = 'Timesheet Approved';
   const body = `Your timesheet for ${periodStart} to ${periodEnd} has been approved by the client.`;
-  const url = buildPortalPath('/portal-employee', { task: 'timesheet-review', timesheetId });
-  const absoluteUrl = absolutePortalUrl(url);
+  const links = buildNotificationLinkBundle(buildPortalPath('/portal-employee', { task: 'timesheet-review', timesheetId }));
 
-  await Promise.allSettled([
-    sendEmailNotification(
-      employee.email,
-      title,
-      `${body}\n\nOpen your portal: ${absoluteUrl}`,
-      `<p>${escapeHtmlText(body)}</p><p><a href="${absoluteUrl}">Open Portal</a></p>`,
-      employee.id
-    ),
-    sendPushNotificationToUser(employee.id, {
-      title,
-      body,
-      url,
-      tag: `timesheet-approved-${timesheetId}`,
-    }),
-    Promise.resolve(createPortalNotification({
+  await dispatchNotificationTargets({
+    eventType: 'timesheet-activity',
+    dedupeKey: `approved:${timesheetId}:employee:${employee.id}`,
+    targets: [{
       userId: employee.id,
       category: 'timesheet',
       title,
       body,
-      url,
-      metadata: { timesheetId },
-      syncDomains: ['timesheets', 'employee-dashboard'],
-    })),
-  ]);
+      relativeUrl: links.relativeUrl,
+      portalNotification: {
+        metadata: { timesheetId },
+        syncDomains: ['timesheets', 'employee-dashboard'],
+      },
+      email: {
+        to: employee.email,
+        subject: title,
+        text: `${body}\n\nOpen it here: ${links.directUrl}`,
+        html: `<p>${escapeHtmlText(body)}</p><p><a href="${links.directUrl}">Open timesheet</a></p>`,
+        logContext: `timesheet_activity:approved:${timesheetId}:employee:${employee.id}`,
+      },
+      push: {
+        payload: {
+          title,
+          body,
+          url: links.relativeUrl,
+          tag: `timesheet-approved-${timesheetId}`,
+        },
+      },
+    }],
+  });
 }
 
 async function notifyJobsiteAboutContractAvailable(jobsiteUserId, contractId, contractName, industryTrack, adminUserId = null) {
@@ -2614,36 +2839,41 @@ async function notifyJobsiteAboutContractAvailable(jobsiteUserId, contractId, co
 
   const title = 'Contract Ready for Review';
   const body = `${contractName || 'A contract'} has been sent to your portal and is ready for review.`;
-  const url = buildPortalPath('/portal-jobsite', { task: 'jobsite-contract', contractId });
-  const absoluteUrl = absolutePortalUrl(url);
+  const links = buildNotificationLinkBundle(buildPortalPath('/portal-jobsite', { task: 'jobsite-contract', contractId }));
 
-  await Promise.allSettled([
-    sendEmailNotification(
-      client.email,
-      title,
-      `${body}\n\nOpen your portal: ${absoluteUrl}`,
-      `<p>${body}</p><p><a href="${absoluteUrl}">Open Portal</a></p>`,
-      client.id
-    ),
-    sendPushNotificationToUser(client.id, {
-      title,
-      body,
-      url,
-      tag: `contract-review-${contractId}`,
-    }),
-    Promise.resolve(createPortalNotification({
+  await dispatchNotificationTargets({
+    eventType: 'contract-activity',
+    dedupeKey: `available:${contractId}:jobsite:${client.id}`,
+    targets: [{
       userId: client.id,
       actorUserId: adminUserId,
       category: 'contract',
       title,
       body,
-      url,
-      taskType: 'contract_review',
-      taskRefId: contractId,
-      metadata: { contractId, industryTrack },
-      syncDomains: ['contracts'],
-    })),
-  ]);
+      relativeUrl: links.relativeUrl,
+      portalNotification: {
+        taskType: 'contract_review',
+        taskRefId: contractId,
+        metadata: { contractId, industryTrack },
+        syncDomains: ['contracts'],
+      },
+      email: {
+        to: client.email,
+        subject: title,
+        text: `${body}\n\nOpen it here: ${links.directUrl}`,
+        html: `<p>${escapeHtmlText(body)}</p><p><a href="${links.directUrl}">Open contract review</a></p>`,
+        logContext: `contract_activity:available:${contractId}:jobsite:${client.id}`,
+      },
+      push: {
+        payload: {
+          title,
+          body,
+          url: links.relativeUrl,
+          tag: `contract-review-${contractId}`,
+        },
+      },
+    }],
+  });
 }
 
 async function notifyAdminsAboutClientSignedContract(contract) {
@@ -2652,43 +2882,46 @@ async function notifyAdminsAboutClientSignedContract(contract) {
   const title = 'Contract Signed by Client';
   const body = `${clientName} signed ${contract.originalName || 'a contract'}. Admin signature is now required.`;
 
-  await Promise.allSettled(
-    admins.map((admin) => {
-      const url = buildPortalPath(getPortalPathForUser(admin), {
+  await dispatchNotificationTargets({
+    eventType: 'contract-activity',
+    dedupeKey: `client-signed:${contract.id}:admins`,
+    targets: admins.map((admin) => {
+      const links = buildNotificationLinkBundle(buildPortalPath(getPortalPathForUser(admin), {
         task: 'admin-contract',
         contractId: contract.id,
         track: contract.industryTrack || '',
-      });
-      const absoluteUrl = absolutePortalUrl(url);
-      return Promise.allSettled([
-      sendEmailNotification(
-        admin.email,
-        title,
-        `${body}\n\nOpen the admin portal: ${absoluteUrl}`,
-        `<p>${body}</p><p><a href="${absoluteUrl}">Open Admin Portal</a></p>`,
-        admin.id
-      ),
-      sendPushNotificationToUser(admin.id, {
-        title,
-        body,
-        url,
-        tag: `contract-admin-sign-${contract.id}`,
-      }),
-      Promise.resolve(createPortalNotification({
+      }));
+      return {
         userId: admin.id,
         actorUserId: contract.jobsiteUserId,
         category: 'contract',
         title,
         body,
-        url,
-        taskType: 'contract_admin_sign',
-        taskRefId: contract.id,
-        metadata: { contractId: contract.id, track: contract.industryTrack || '' },
-        syncDomains: ['contracts'],
-      })),
-    ]);
-    })
-  );
+        relativeUrl: links.relativeUrl,
+        portalNotification: {
+          taskType: 'contract_admin_sign',
+          taskRefId: contract.id,
+          metadata: { contractId: contract.id, track: contract.industryTrack || '' },
+          syncDomains: ['contracts'],
+        },
+        email: {
+          to: admin.email,
+          subject: title,
+          text: `${body}\n\nOpen it here: ${links.directUrl}`,
+          html: `<p>${escapeHtmlText(body)}</p><p><a href="${links.directUrl}">Open contract review</a></p>`,
+          logContext: `contract_activity:client_signed:${contract.id}:admin:${admin.id}`,
+        },
+        push: {
+          payload: {
+            title,
+            body,
+            url: links.relativeUrl,
+            tag: `contract-admin-sign-${contract.id}`,
+          },
+        },
+      };
+    }),
+  });
 }
 
 async function notifyAdminsAboutContractOutcome(contract, outcome) {
@@ -2705,43 +2938,44 @@ async function notifyAdminsAboutContractOutcome(contract, outcome) {
     : normalizedOutcome === 'declined'
       ? `${clientName} declined ${contract.originalName || 'a contract'}.`
       : `${clientName} withdrew ${contract.originalName || 'a contract'}.`;
-  await Promise.allSettled(
-    admins.map((admin) => {
-      const url = buildPortalPath(getPortalPathForUser(admin), {
+  await dispatchNotificationTargets({
+    eventType: 'contract-activity',
+    dedupeKey: `outcome:${contract.id}:${normalizedOutcome}:admins`,
+    targets: admins.map((admin) => {
+      const links = buildNotificationLinkBundle(buildPortalPath(getPortalPathForUser(admin), {
         task: 'admin-contract',
         contractId: contract.id,
         track: contract.industryTrack || '',
-      });
-      const absoluteUrl = absolutePortalUrl(url);
-      return Promise.allSettled([
-      normalizedOutcome === 'executed'
-        ? sendEmailNotification(
-          admin.email,
-          title,
-          `${body}\n\nOpen the admin portal: ${absoluteUrl}`,
-          `<p>${body}</p><p><a href="${absoluteUrl}">Open Admin Portal</a></p>`,
-          admin.id
-        )
-        : Promise.resolve({ skipped: true }),
-      sendPushNotificationToUser(admin.id, {
-        title,
-        body,
-        url,
-        tag: `contract-outcome-${contract.id}-${normalizedOutcome}`,
-      }),
-      Promise.resolve(createPortalNotification({
+      }));
+      return {
         userId: admin.id,
         actorUserId: contract.jobsiteUserId,
         category: 'contract',
         title,
         body,
-        url,
-        metadata: { contractId: contract.id, outcome: normalizedOutcome, track: contract.industryTrack || '' },
-        syncDomains: ['contracts'],
-      })),
-    ]);
-    })
-  );
+        relativeUrl: links.relativeUrl,
+        portalNotification: {
+          metadata: { contractId: contract.id, outcome: normalizedOutcome, track: contract.industryTrack || '' },
+          syncDomains: ['contracts'],
+        },
+        email: {
+          to: admin.email,
+          subject: title,
+          text: `${body}\n\nOpen it here: ${links.directUrl}`,
+          html: `<p>${escapeHtmlText(body)}</p><p><a href="${links.directUrl}">Open contract activity</a></p>`,
+          logContext: `contract_activity:${normalizedOutcome}:${contract.id}:admin:${admin.id}`,
+        },
+        push: {
+          payload: {
+            title,
+            body,
+            url: links.relativeUrl,
+            tag: `contract-outcome-${contract.id}-${normalizedOutcome}`,
+          },
+        },
+      };
+    }),
+  });
 }
 
 async function notifyJobsiteAboutContractExecuted(contract) {
@@ -2750,34 +2984,39 @@ async function notifyJobsiteAboutContractExecuted(contract) {
 
   const title = 'Contract Executed';
   const body = `${contract.originalName || 'Your contract'} has been fully executed.`;
-  const url = buildPortalPath('/portal-jobsite', { task: 'jobsite-contract', contractId: contract.id });
-  const absoluteUrl = absolutePortalUrl(url);
+  const links = buildNotificationLinkBundle(buildPortalPath('/portal-jobsite', { task: 'jobsite-contract', contractId: contract.id }));
 
-  await Promise.allSettled([
-    sendEmailNotification(
-      client.email,
-      title,
-      `${body}\n\nOpen your portal: ${absoluteUrl}`,
-      `<p>${body}</p><p><a href="${absoluteUrl}">Open Portal</a></p>`,
-      client.id
-    ),
-    sendPushNotificationToUser(client.id, {
-      title,
-      body,
-      url,
-      tag: `contract-executed-${contract.id}`,
-    }),
-    Promise.resolve(createPortalNotification({
+  await dispatchNotificationTargets({
+    eventType: 'contract-activity',
+    dedupeKey: `executed:${contract.id}:jobsite:${client.id}`,
+    targets: [{
       userId: client.id,
       actorUserId: contract.uploadedByAdminUserId,
       category: 'contract',
       title,
       body,
-      url,
-      metadata: { contractId: contract.id, outcome: 'executed' },
-      syncDomains: ['contracts'],
-    })),
-  ]);
+      relativeUrl: links.relativeUrl,
+      portalNotification: {
+        metadata: { contractId: contract.id, outcome: 'executed' },
+        syncDomains: ['contracts'],
+      },
+      email: {
+        to: client.email,
+        subject: title,
+        text: `${body}\n\nOpen it here: ${links.directUrl}`,
+        html: `<p>${escapeHtmlText(body)}</p><p><a href="${links.directUrl}">Open contract</a></p>`,
+        logContext: `contract_activity:executed:${contract.id}:jobsite:${client.id}`,
+      },
+      push: {
+        payload: {
+          title,
+          body,
+          url: links.relativeUrl,
+          tag: `contract-executed-${contract.id}`,
+        },
+      },
+    }],
+  });
 }
 
 async function notifyContractRenewalDue(contract) {
@@ -2788,33 +3027,74 @@ async function notifyContractRenewalDue(contract) {
   const title = 'Contract Renewal Required';
   const clientBody = `${contractName} is due for its annual renewal. Please log in to review and decide whether to renew or allow the contract to expire.`;
   const adminBody = `${contractName} for client ${contract.clientCompanyName || contract.clientUserName || 'a client'} is due for renewal. Please review and submit your renewal decision.`;
-  const tasks = [];
-  if (client) {
-    tasks.push(
-      sendEmailNotification(client.email, title, `${clientBody}\n\nOpen your portal: ${absolutePortalUrl(clientUrl)}`,
-        `<p>${clientBody}</p><p><a href="${absolutePortalUrl(clientUrl)}">Open Portal</a></p>`, client.id),
-      sendPushNotificationToUser(client.id, { title, body: clientBody, url: clientUrl, tag: `contract-renewal-${contract.id}` }),
-      Promise.resolve(createPortalNotification({
-        userId: client.id, actorUserId: null, category: 'contract', title, body: clientBody, url: clientUrl,
-        taskType: 'contract_renewal', taskRefId: contract.id,
-        metadata: { contractId: contract.id }, syncDomains: ['contracts'],
-      }))
-    );
-  }
-  admins.forEach((admin) => {
-    const adminUrl = buildPortalPath(getPortalPathForUser(admin), { task: 'admin-contract', contractId: contract.id, track: contract.industryTrack || '' });
-    tasks.push(
-      sendEmailNotification(admin.email, title, `${adminBody}\n\nOpen admin portal: ${absolutePortalUrl(adminUrl)}`,
-        `<p>${adminBody}</p><p><a href="${absolutePortalUrl(adminUrl)}">Open Admin Portal</a></p>`, admin.id),
-      sendPushNotificationToUser(admin.id, { title, body: adminBody, url: adminUrl, tag: `contract-renewal-${contract.id}` }),
-      Promise.resolve(createPortalNotification({
-        userId: admin.id, actorUserId: null, category: 'contract', title, body: adminBody, url: adminUrl,
-        taskType: 'contract_renewal', taskRefId: contract.id,
-        metadata: { contractId: contract.id, track: contract.industryTrack || '' }, syncDomains: ['contracts'],
-      }))
-    );
+  await dispatchNotificationTargets({
+    eventType: 'contract-activity',
+    dedupeKey: `renewal-due:${contract.id}`,
+    targets: [
+      ...(client ? [(() => {
+        const links = buildNotificationLinkBundle(clientUrl);
+        return {
+          userId: client.id,
+          category: 'contract',
+          title,
+          body: clientBody,
+          relativeUrl: links.relativeUrl,
+          portalNotification: {
+            taskType: 'contract_renewal',
+            taskRefId: contract.id,
+            metadata: { contractId: contract.id },
+            syncDomains: ['contracts'],
+          },
+          email: {
+            to: client.email,
+            subject: title,
+            text: `${clientBody}\n\nOpen it here: ${links.directUrl}`,
+            html: `<p>${escapeHtmlText(clientBody)}</p><p><a href="${links.directUrl}">Open renewal task</a></p>`,
+            logContext: `contract_activity:renewal_due:${contract.id}:jobsite:${client.id}`,
+          },
+          push: {
+            payload: {
+              title,
+              body: clientBody,
+              url: links.relativeUrl,
+              tag: `contract-renewal-${contract.id}`,
+            },
+          },
+        };
+      })()] : []),
+      ...admins.map((admin) => {
+        const links = buildNotificationLinkBundle(buildPortalPath(getPortalPathForUser(admin), { task: 'admin-contract', contractId: contract.id, track: contract.industryTrack || '' }));
+        return {
+          userId: admin.id,
+          category: 'contract',
+          title,
+          body: adminBody,
+          relativeUrl: links.relativeUrl,
+          portalNotification: {
+            taskType: 'contract_renewal',
+            taskRefId: contract.id,
+            metadata: { contractId: contract.id, track: contract.industryTrack || '' },
+            syncDomains: ['contracts'],
+          },
+          email: {
+            to: admin.email,
+            subject: title,
+            text: `${adminBody}\n\nOpen it here: ${links.directUrl}`,
+            html: `<p>${escapeHtmlText(adminBody)}</p><p><a href="${links.directUrl}">Open renewal task</a></p>`,
+            logContext: `contract_activity:renewal_due:${contract.id}:admin:${admin.id}`,
+          },
+          push: {
+            payload: {
+              title,
+              body: adminBody,
+              url: links.relativeUrl,
+              tag: `contract-renewal-${contract.id}`,
+            },
+          },
+        };
+      }),
+    ],
   });
-  await Promise.allSettled(tasks);
 }
 
 async function notifyAboutWithdrawalInitiated(contract) {
@@ -2823,19 +3103,42 @@ async function notifyAboutWithdrawalInitiated(contract) {
   const clientName = contract.clientCompanyName || contract.clientUserName || 'A client';
   const title = 'Contract Cancellation Initiated';
   const body = `${clientName} has initiated a cancellation request for ${contractName}. Your signature is required to complete the cancellation.`;
-  await Promise.allSettled(admins.flatMap((admin) => {
-    const adminUrl = buildPortalPath(getPortalPathForUser(admin), { task: 'admin-contract', contractId: contract.id, track: contract.industryTrack || '' });
-    return [
-      sendEmailNotification(admin.email, title, `${body}\n\nOpen admin portal: ${absolutePortalUrl(adminUrl)}`,
-        `<p>${body}</p><p><a href="${absolutePortalUrl(adminUrl)}">Open Admin Portal</a></p>`, admin.id),
-      sendPushNotificationToUser(admin.id, { title, body, url: adminUrl, tag: `contract-cancel-${contract.id}` }),
-      Promise.resolve(createPortalNotification({
-        userId: admin.id, actorUserId: contract.jobsiteUserId, category: 'contract', title, body, url: adminUrl,
-        taskType: 'contract_cancel_confirm', taskRefId: contract.id,
-        metadata: { contractId: contract.id, track: contract.industryTrack || '' }, syncDomains: ['contracts'],
-      })),
-    ];
-  }));
+  await dispatchNotificationTargets({
+    eventType: 'contract-activity',
+    dedupeKey: `cancel-initiated:${contract.id}:admins`,
+    targets: admins.map((admin) => {
+      const links = buildNotificationLinkBundle(buildPortalPath(getPortalPathForUser(admin), { task: 'admin-contract', contractId: contract.id, track: contract.industryTrack || '' }));
+      return {
+        userId: admin.id,
+        actorUserId: contract.jobsiteUserId,
+        category: 'contract',
+        title,
+        body,
+        relativeUrl: links.relativeUrl,
+        portalNotification: {
+          taskType: 'contract_cancel_confirm',
+          taskRefId: contract.id,
+          metadata: { contractId: contract.id, track: contract.industryTrack || '' },
+          syncDomains: ['contracts'],
+        },
+        email: {
+          to: admin.email,
+          subject: title,
+          text: `${body}\n\nOpen it here: ${links.directUrl}`,
+          html: `<p>${escapeHtmlText(body)}</p><p><a href="${links.directUrl}">Open cancellation task</a></p>`,
+          logContext: `contract_activity:cancel_initiated:${contract.id}:admin:${admin.id}`,
+        },
+        push: {
+          payload: {
+            title,
+            body,
+            url: links.relativeUrl,
+            tag: `contract-cancel-${contract.id}`,
+          },
+        },
+      };
+    }),
+  });
 }
 
 async function notifyAboutContractCancelled(contract) {
@@ -2845,24 +3148,70 @@ async function notifyAboutContractCancelled(contract) {
   const title = 'Contract Cancelled';
   const body = `${contractName} has been permanently cancelled by mutual agreement of both parties.`;
   const clientUrl = buildPortalPath('/portal-jobsite', { task: 'jobsite-contract', contractId: contract.id });
-  const tasks = [];
-  if (client) {
-    tasks.push(
-      sendPushNotificationToUser(client.id, { title, body, url: clientUrl, tag: `contract-cancelled-${contract.id}` }),
-      Promise.resolve(createPortalNotification({
-        userId: client.id, actorUserId: null, category: 'contract', title, body, url: clientUrl,
-        metadata: { contractId: contract.id }, syncDomains: ['contracts'],
-      }))
-    );
-  }
-  admins.forEach((admin) => {
-    const adminUrl = buildPortalPath(getPortalPathForUser(admin), { task: 'admin-contract', contractId: contract.id, track: contract.industryTrack || '' });
-    tasks.push(Promise.resolve(createPortalNotification({
-      userId: admin.id, actorUserId: null, category: 'contract', title, body, url: adminUrl,
-      metadata: { contractId: contract.id }, syncDomains: ['contracts'],
-    })));
+  await dispatchNotificationTargets({
+    eventType: 'contract-activity',
+    dedupeKey: `cancelled:${contract.id}`,
+    targets: [
+      ...(client ? [(() => {
+        const links = buildNotificationLinkBundle(clientUrl);
+        return {
+          userId: client.id,
+          category: 'contract',
+          title,
+          body,
+          relativeUrl: links.relativeUrl,
+          portalNotification: {
+            metadata: { contractId: contract.id },
+            syncDomains: ['contracts'],
+          },
+          email: {
+            to: client.email,
+            subject: title,
+            text: `${body}\n\nOpen it here: ${links.directUrl}`,
+            html: `<p>${escapeHtmlText(body)}</p><p><a href="${links.directUrl}">Open contract</a></p>`,
+            logContext: `contract_activity:cancelled:${contract.id}:jobsite:${client.id}`,
+          },
+          push: {
+            payload: {
+              title,
+              body,
+              url: links.relativeUrl,
+              tag: `contract-cancelled-${contract.id}`,
+            },
+          },
+        };
+      })()] : []),
+      ...admins.map((admin) => {
+        const links = buildNotificationLinkBundle(buildPortalPath(getPortalPathForUser(admin), { task: 'admin-contract', contractId: contract.id, track: contract.industryTrack || '' }));
+        return {
+          userId: admin.id,
+          category: 'contract',
+          title,
+          body,
+          relativeUrl: links.relativeUrl,
+          portalNotification: {
+            metadata: { contractId: contract.id },
+            syncDomains: ['contracts'],
+          },
+          email: {
+            to: admin.email,
+            subject: title,
+            text: `${body}\n\nOpen it here: ${links.directUrl}`,
+            html: `<p>${escapeHtmlText(body)}</p><p><a href="${links.directUrl}">Open contract activity</a></p>`,
+            logContext: `contract_activity:cancelled:${contract.id}:admin:${admin.id}`,
+          },
+          push: {
+            payload: {
+              title,
+              body,
+              url: links.relativeUrl,
+              tag: `contract-cancelled-${contract.id}-admin-${admin.id}`,
+            },
+          },
+        };
+      }),
+    ],
   });
-  await Promise.allSettled(tasks);
 }
 
 async function notifyAboutContractRenewed(contract) {
@@ -2872,21 +3221,70 @@ async function notifyAboutContractRenewed(contract) {
   const title = 'Contract Renewed';
   const body = `${contractName} has been renewed by both parties for another year.`;
   const clientUrl = buildPortalPath('/portal-jobsite', { task: 'jobsite-contract', contractId: contract.id });
-  const tasks = [];
-  if (client) {
-    tasks.push(Promise.resolve(createPortalNotification({
-      userId: client.id, actorUserId: null, category: 'contract', title, body, url: clientUrl,
-      metadata: { contractId: contract.id }, syncDomains: ['contracts'],
-    })));
-  }
-  admins.forEach((admin) => {
-    const adminUrl = buildPortalPath(getPortalPathForUser(admin), { task: 'admin-contract', contractId: contract.id, track: contract.industryTrack || '' });
-    tasks.push(Promise.resolve(createPortalNotification({
-      userId: admin.id, actorUserId: null, category: 'contract', title, body, url: adminUrl,
-      metadata: { contractId: contract.id }, syncDomains: ['contracts'],
-    })));
+  await dispatchNotificationTargets({
+    eventType: 'contract-activity',
+    dedupeKey: `renewed:${contract.id}`,
+    targets: [
+      ...(client ? [(() => {
+        const links = buildNotificationLinkBundle(clientUrl);
+        return {
+          userId: client.id,
+          category: 'contract',
+          title,
+          body,
+          relativeUrl: links.relativeUrl,
+          portalNotification: {
+            metadata: { contractId: contract.id },
+            syncDomains: ['contracts'],
+          },
+          email: {
+            to: client.email,
+            subject: title,
+            text: `${body}\n\nOpen it here: ${links.directUrl}`,
+            html: `<p>${escapeHtmlText(body)}</p><p><a href="${links.directUrl}">Open contract</a></p>`,
+            logContext: `contract_activity:renewed:${contract.id}:jobsite:${client.id}`,
+          },
+          push: {
+            payload: {
+              title,
+              body,
+              url: links.relativeUrl,
+              tag: `contract-renewed-${contract.id}`,
+            },
+          },
+        };
+      })()] : []),
+      ...admins.map((admin) => {
+        const links = buildNotificationLinkBundle(buildPortalPath(getPortalPathForUser(admin), { task: 'admin-contract', contractId: contract.id, track: contract.industryTrack || '' }));
+        return {
+          userId: admin.id,
+          category: 'contract',
+          title,
+          body,
+          relativeUrl: links.relativeUrl,
+          portalNotification: {
+            metadata: { contractId: contract.id },
+            syncDomains: ['contracts'],
+          },
+          email: {
+            to: admin.email,
+            subject: title,
+            text: `${body}\n\nOpen it here: ${links.directUrl}`,
+            html: `<p>${escapeHtmlText(body)}</p><p><a href="${links.directUrl}">Open contract activity</a></p>`,
+            logContext: `contract_activity:renewed:${contract.id}:admin:${admin.id}`,
+          },
+          push: {
+            payload: {
+              title,
+              body,
+              url: links.relativeUrl,
+              tag: `contract-renewed-${contract.id}-admin-${admin.id}`,
+            },
+          },
+        };
+      }),
+    ],
   });
-  await Promise.allSettled(tasks);
 }
 
 async function notifyEmployeeAboutShiftOffer(recipient, offer) {
@@ -3704,34 +4102,65 @@ async function sendEmployeePaperTimesheetReminder(options = {}) {
   const body = isFinalReminder
     ? `Paper timesheets for ${periodStart} through ${periodEnd} are due now and must be turned in no later than Monday at 8:00 AM.`
     : `If you are submitting a paper timesheet for ${periodStart} through ${periodEnd}, it must be turned in every Monday no later than 8:00 AM.`;
-  const url = buildPortalPath('/portal-employee', { task: 'timesheets', periodStart, periodEnd });
+  const employeeLinks = buildNotificationLinkBundle(buildPortalPath('/portal-employee', { task: 'timesheet_reminder', periodStart, periodEnd }));
+  const employeePhone = getUserPhoneNumber(employeeUserId, 'employee');
+  const adminRecipients = getActiveAdminUsersForScopes(['scheduling']);
 
-  await Promise.allSettled([
-    sendOnboardingReminderEmail({
-      to: employee.email,
-      subject: title,
-      text: `${body}\n\nOpen portal: ${absolutePortalUrl(url)}`,
-      html: `<p>${escapeHtmlText(body)}</p><p><a href="${absolutePortalUrl(url)}">Open Portal</a></p>`,
-    }),
-    sendPushNotificationToUser(employeeUserId, {
-      title,
-      body,
-      url,
-      tag: `${reminderType}-${weekKey}`,
-      data: { reminderType, weekKey, periodStart, periodEnd },
-    }, { ignorePreference: true }),
-    Promise.resolve(createPortalNotification({
-      userId: employeeUserId,
-      actorUserId: null,
-      category: 'timesheet',
-      title,
-      body,
-      url,
-      taskType: 'timesheet_reminder',
-      metadata: { reminderType, weekKey, periodStart, periodEnd },
-      syncDomains: ['notifications', 'timesheets', 'employee-dashboard'],
-    })),
-  ]);
+  await dispatchNotificationTargets({
+    eventType: 'timesheet-reminder',
+    dedupeKey: `${employeeUserId}:${reminderType}:${weekKey}`,
+    targets: [
+      {
+        userId: employeeUserId,
+        category: 'timesheet',
+        title,
+        body,
+        relativeUrl: employeeLinks.relativeUrl,
+        portalNotification: {
+          taskType: 'timesheet_reminder',
+          metadata: { reminderType, weekKey, periodStart, periodEnd },
+          syncDomains: ['notifications', 'timesheets', 'employee-dashboard'],
+        },
+        email: {
+          to: employee.email,
+          subject: title,
+          text: `${body}\n\nOpen it here: ${employeeLinks.directUrl}`,
+          html: `<p>${escapeHtmlText(body)}</p><p><a href="${employeeLinks.directUrl}">Open reminder task</a></p>`,
+          logContext: `timesheet_reminder:${reminderType}:${weekKey}:employee:${employeeUserId}`,
+        },
+        push: {
+          payload: {
+            title,
+            body,
+            url: employeeLinks.relativeUrl,
+            tag: `${reminderType}-${weekKey}`,
+            data: { reminderType, weekKey, periodStart, periodEnd },
+          },
+          options: { ignorePreference: true },
+        },
+        sms: {
+          to: employeePhone,
+          body: `${title}: ${body} Open: ${employeeLinks.directUrl}`.slice(0, 320),
+        },
+      },
+      ...adminRecipients.map((admin) => {
+        const adminLinks = buildNotificationLinkBundle(buildPortalPath(getPortalPathForUser(admin), { task: 'timesheet-review', periodStart, periodEnd }));
+        return {
+          userId: admin.id,
+          actorUserId: null,
+          category: 'timesheet',
+          title: `Timesheet Reminder Sent: ${employee.name || 'Employee'}`,
+          body: `${employee.name || 'An employee'} was reminded to submit a paper timesheet for ${periodStart} through ${periodEnd}.`,
+          relativeUrl: adminLinks.relativeUrl,
+          portalNotification: {
+            taskType: 'timesheet_reminder',
+            metadata: { employeeUserId, reminderType, weekKey, periodStart, periodEnd },
+            syncDomains: ['admin-dashboard', 'timesheets'],
+          },
+        };
+      }),
+    ],
+  });
 
   return { sent: true };
 }
@@ -5726,14 +6155,13 @@ app.post('/api/portal/contracts/send', authGuard(['admin']), upload.array('contr
       runAsyncTask('notify_jobsite_contract_available_from_contracts_portal', () =>
         notifyJobsiteAboutContractAvailable(jobsiteUserId, contractId, file ? file.originalname : 'Contract', industryTrack, req.auth.id)
       );
+      notifyContractsPortalActivityToAdmins(
+        req.auth.id,
+        'Contract sent to client',
+        `${file ? file.originalname : 'Contract'} was sent to client #${jobsiteUserId}.`,
+        { contractId, jobsiteUserId, industryTrack, track: industryTrack }
+      );
     });
-
-    notifyContractsPortalActivityToAdmins(
-      req.auth.id,
-      'Contracts sent to client',
-      `${createdIds.length} contract(s) were sent to client #${jobsiteUserId}.`,
-      { jobsiteUserId, count: createdIds.length, industryTrack }
-    );
 
     emitContractsDomainSyncToAdmins();
 
@@ -5775,8 +6203,8 @@ app.post('/api/portal/contracts/send-bank/:id', authGuard(['admin']), (req, res)
   notifyContractsPortalActivityToAdmins(
     req.auth.id,
     'Bank contract sent to client',
-    `Bank contract #${bankId} was sent to client #${jobsiteUserId}.`,
-    { bankId, jobsiteUserId, contractId: Number(result.lastInsertRowid) }
+    `${entry.originalName || `Bank contract #${bankId}`} was sent to client #${jobsiteUserId}.`,
+    { bankId, jobsiteUserId, contractId: Number(result.lastInsertRowid), industryTrack: entry.industryTrack, track: entry.industryTrack }
   );
 
   emitContractsDomainSyncToAdmins();

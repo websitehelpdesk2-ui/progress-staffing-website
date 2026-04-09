@@ -64,6 +64,8 @@ async function main() {
     await client.query('BEGIN');
     await client.query(POSTGRES_SCHEMA_SQL);
 
+    let postgresUserIds = null;
+
     for (const tableName of TABLES) {
       if (!tableExists(tableName)) continue;
 
@@ -75,6 +77,22 @@ async function main() {
 
       for (const row of rows) {
         const values = columnNames.map((columnName) => row[columnName]);
+
+        if (tableName === 'applications') {
+          const userIdColumnIndex = columnNames.findIndex((columnName) => columnName.toLowerCase() === 'userid');
+          if (userIdColumnIndex !== -1) {
+            const originalUserId = values[userIdColumnIndex];
+            if (originalUserId != null && postgresUserIds && !postgresUserIds.has(Number(originalUserId))) {
+              const applicationIdColumnIndex = columnNames.findIndex((columnName) => columnName.toLowerCase() === 'id');
+              const applicationId = applicationIdColumnIndex === -1 ? null : values[applicationIdColumnIndex];
+              console.warn(
+                `[migration] repaired orphaned application row id=${applicationId} originalUserId=${originalUserId} by setting userId=NULL`
+              );
+              values[userIdColumnIndex] = null;
+            }
+          }
+        }
+
         await client.query(insertSql, values);
       }
 
@@ -84,6 +102,11 @@ async function main() {
           `SELECT setval(pg_get_serial_sequence($1, 'id'), COALESCE((SELECT MAX(id) FROM ${tableName}), 1), (SELECT COUNT(*) > 0 FROM ${tableName}))`,
           [tableName]
         );
+      }
+
+      if (tableName === 'users') {
+        const importedUsers = await client.query('SELECT id FROM users');
+        postgresUserIds = new Set(importedUsers.rows.map((row) => Number(row.id)));
       }
     }
 

@@ -511,8 +511,23 @@ function buildSchemaMetadata(sql) {
 
 const schemaMetadata = buildSchemaMetadata(POSTGRES_SCHEMA_SQL);
 
+// Safe, idempotent column-add migrations.
+// These run on every Postgres startup (not gated by AUTO_DB_BOOTSTRAP)
+// so that new columns are always present regardless of when the schema
+// was first bootstrapped.
+const POSTGRES_SAFE_MIGRATIONS = [
+  'ALTER TABLE users ADD COLUMN IF NOT EXISTS pendingEmail TEXT',
+  'ALTER TABLE users ADD COLUMN IF NOT EXISTS pendingEmailVerificationToken TEXT',
+  'ALTER TABLE users ADD COLUMN IF NOT EXISTS pendingEmailVerificationExpiresAt BIGINT',
+  "ALTER TABLE users ADD COLUMN IF NOT EXISTS preferredLanguage TEXT NOT NULL DEFAULT 'en'",
+  'ALTER TABLE jobsite_profiles ADD COLUMN IF NOT EXISTS city TEXT',
+  'ALTER TABLE jobsite_profiles ADD COLUMN IF NOT EXISTS state TEXT',
+  'ALTER TABLE jobsite_profiles ADD COLUMN IF NOT EXISTS zip TEXT',
+];
+
 module.exports = {
   POSTGRES_SCHEMA_SQL,
+  POSTGRES_SAFE_MIGRATIONS,
   TABLE_COLUMNS: schemaMetadata.tableColumns,
   COLUMN_CASE_MAP: schemaMetadata.columnCaseMap,
 };

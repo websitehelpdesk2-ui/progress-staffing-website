@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const Database = require('better-sqlite3');
-const { PostgresDatabase, bootstrapPostgresSchema } = require('./postgres');
+const { PostgresDatabase, bootstrapPostgresSchema, runSafePostgresMigrations } = require('./postgres');
 
 function isProductionDeployment() {
   const nodeEnv = String(process.env.NODE_ENV || '').trim().toLowerCase();
@@ -26,6 +26,7 @@ function createDatabase() {
 
 module.exports = {
   bootstrapPostgresSchema,
+  runSafePostgresMigrations,
   createDatabase,
   isProductionDeployment,
   isUsingPostgres: Boolean(String(process.env.DATABASE_URL || '').trim()),

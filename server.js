@@ -7,7 +7,7 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const multer = require('multer');
 const { Server } = require('socket.io');
-const { bootstrapPostgresSchema, createDatabase, isProductionDeployment, isUsingPostgres } = require('./db');
+const { bootstrapPostgresSchema, runSafePostgresMigrations, createDatabase, isProductionDeployment, isUsingPostgres } = require('./db');
 const {
   isEmailServiceConfigured,
   sendPasswordResetEmail,
@@ -5344,6 +5344,7 @@ function createLimiter(windowMs, max, message, options = {}) {
 }
 
 if (isUsingPostgres) {
+  runSafePostgresMigrations(db);
   if (AUTO_DB_BOOTSTRAP) {
     bootstrapPostgresSchema(db);
   } else {

@@ -1,6 +1,6 @@
 const path = require('path');
 const { MessageChannel, Worker, receiveMessageOnPort } = require('worker_threads');
-const { POSTGRES_SCHEMA_SQL, TABLE_COLUMNS, COLUMN_CASE_MAP } = require('./postgres-schema');
+const { POSTGRES_SCHEMA_SQL, POSTGRES_SAFE_MIGRATIONS, TABLE_COLUMNS, COLUMN_CASE_MAP } = require('./postgres-schema');
 const sleepSignal = new Int32Array(new SharedArrayBuffer(4));
 
 function splitSqlStatements(sql) {
@@ -243,7 +243,18 @@ function bootstrapPostgresSchema(db) {
   db.exec(POSTGRES_SCHEMA_SQL);
 }
 
+function runSafePostgresMigrations(db) {
+  POSTGRES_SAFE_MIGRATIONS.forEach((sql) => {
+    try {
+      db.exec(sql);
+    } catch (error) {
+      console.warn('[db] Safe migration skipped:', sql, error && error.message);
+    }
+  });
+}
+
 module.exports = {
   PostgresDatabase,
   bootstrapPostgresSchema,
+  runSafePostgresMigrations,
 };

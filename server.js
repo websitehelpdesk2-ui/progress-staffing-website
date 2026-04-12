@@ -77,6 +77,8 @@ const manualDocumentReminderInFlight = new Map();
 const notificationDispatchInFlight = new Map();
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
 const EMAIL_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000;
+const SUPPORTED_PORTAL_LANGUAGES = new Set(['en', 'es', 'ar']);
+const EMAIL_ADDRESS_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 const AUTO_DB_BOOTSTRAP = !isProductionDeployment() && String(process.env.AUTO_DB_BOOTSTRAP || '').trim().toLowerCase() === 'true';
 
 function normalizeBaseUrl(rawValue, source) {
@@ -620,6 +622,7 @@ function initDatabase() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
       email TEXT NOT NULL UNIQUE,
+      pendingEmail TEXT,
       role TEXT NOT NULL CHECK(role IN ('employee', 'jobsite', 'admin')),
       passwordHash TEXT NOT NULL,
       passwordSalt TEXT NOT NULL,
@@ -630,7 +633,8 @@ function initDatabase() {
       notifyPushEnabled INTEGER NOT NULL DEFAULT 1,
       isActive INTEGER NOT NULL DEFAULT 1,
       createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      lastLoginAt DATETIME
+      lastLoginAt DATETIME,
+      preferredLanguage TEXT NOT NULL DEFAULT 'en'
     );
 
     CREATE TABLE IF NOT EXISTS employee_profiles (
@@ -651,6 +655,9 @@ function initDatabase() {
       contactName TEXT,
       phone TEXT,
       address TEXT,
+      city TEXT,
+      state TEXT,
+      zip TEXT,
       geofenceLatitude REAL,
       geofenceLongitude REAL,
       FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
@@ -1483,6 +1490,77 @@ function normalizePhoneNumber(phone) {
   if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
   if (String(phone || '').trim().startsWith('+')) return String(phone).trim();
   return '';
+}
+
+function isValidEmailAddress(email) {
+  return EMAIL_ADDRESS_PATTERN.test(String(email || '').trim());
+}
+
+function normalizePreferredLanguage(value, fallback = 'en') {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (SUPPORTED_PORTAL_LANGUAGES.has(normalized)) return normalized;
+  return fallback;
+}
+
+function normalizeSingleLineText(value, maxLength = 255) {
+  return String(value || '').replace(/\s+/g, ' ').trim().slice(0, maxLength);
+}
+
+function normalizeMultiLineText(value, maxLength = 500) {
+  return String(value || '').replace(/\r\n/g, '\n').trim().slice(0, maxLength);
+}
+
+function validateStructuredAddress(address, city, state, zip, message) {
+  const hasAddressData = Boolean(address || city || state || zip);
+  if (hasAddressData && (!address || !city || !state || !zip)) {
+    return message;
+  }
+  if (state && !/^[A-Z]{2}$/.test(state)) {
+    return 'State must be a 2-letter code.';
+  }
+  if (zip && !/^\d{5}(?:-\d{4})?$/.test(zip)) {
+    return 'ZIP code must be 5 digits or ZIP+4 format.';
+  }
+  return '';
+}
+
+function createPendingEmailVerificationRecord() {
+  return {
+    rawToken: crypto.randomBytes(32).toString('hex'),
+    expiresAt: Date.now() + EMAIL_VERIFICATION_TTL_MS,
+  };
+}
+
+function buildPendingEmailVerificationPayload(user, nextEmail, verificationUrl) {
+  const safeName = escapeHtmlText(user.name || 'there');
+  const safeEmail = escapeHtmlText(nextEmail);
+  return {
+    subject: 'Confirm your Progress Staffing Agency email change',
+    text: `Hi ${user.name || 'there'},\n\nWe received a request to change your Progress Staffing Agency login email to ${nextEmail}. Confirm the new email address by opening the link below:\n\n${verificationUrl}\n\nIf you did not request this change, you can ignore this email and your current login will remain unchanged.`,
+    html: `<p>Hi ${safeName},</p><p>We received a request to change your Progress Staffing Agency login email to <strong>${safeEmail}</strong>.</p><p>Confirm the new email address by clicking the link below:</p><p><a href="${verificationUrl}">Confirm New Email</a></p><p>If you did not request this change, you can ignore this email and your current login will remain unchanged.</p>`,
+  };
+}
+
+async function sendPendingEmailVerificationEmail(user, nextEmail, verificationRecord, reason = 'account_update') {
+  const verificationUrl = buildAppUrl('/api/verify-email', {
+    token: verificationRecord.rawToken,
+  }, 'pending-email-verification');
+  const emailPayload = buildPendingEmailVerificationPayload(user, nextEmail, verificationUrl);
+
+  const providerResult = await sendNotificationEmail({
+    to: nextEmail,
+    subject: emailPayload.subject,
+    text: emailPayload.text,
+    html: emailPayload.html,
+    replyTo: EMAIL_REPLY_TO,
+    logContext: `pending_email_verification:${reason}`,
+  });
+
+  return {
+    verificationUrl,
+    expiresAt: verificationRecord.expiresAt,
+    providerResult,
+  };
 }
 
 function toFiniteNumber(value) {
@@ -3359,12 +3437,14 @@ function getSessionUser(token) {
          u.id,
          u.name,
          u.email,
+        u.pendingEmail,
          u.role,
          u.portalScope,
          u.notifyEmailEnabled,
          u.notifySmsEnabled,
          u.notifyPushEnabled,
          u.requireBiometricSensitive,
+        u.preferredLanguage,
          u.isActive,
          u.adminEmployeeIndustryTrack
        FROM sessions s
@@ -3381,6 +3461,7 @@ function getSessionUser(token) {
     id: session.id,
     name: session.name,
     email: session.email,
+    pendingEmail: session.pendingEmail || null,
     role: session.role,
     portalScope: normalizeAdminScope(session.portalScope),
     notificationPreferences: {
@@ -3389,6 +3470,7 @@ function getSessionUser(token) {
       push: Number(session.notifyPushEnabled) === 1,
     },
     requireBiometricSensitive: Number(session.requireBiometricSensitive) === 1,
+    preferredLanguage: normalizePreferredLanguage(session.preferredLanguage, 'en'),
     adminEmployeeIndustryTrack: session.adminEmployeeIndustryTrack || null,
     tokenHash: session.tokenHash,
     sessionId: session.sessionId,
@@ -3448,6 +3530,7 @@ function sanitizeUser(user) {
     id: user.id,
     name: user.name,
     email: user.email,
+    pendingEmail: user.pendingEmail || null,
     role: user.role,
     portalScope: normalizeAdminScope(user.portalScope),
     homePath: getPortalPathForUser(user),
@@ -3459,6 +3542,7 @@ function sanitizeUser(user) {
     securityPreferences: {
       requireBiometricSensitive: Number(user && user.requireBiometricSensitive) === 1,
     },
+    preferredLanguage: normalizePreferredLanguage(user && user.preferredLanguage, 'en'),
     mandatoryPushLock: Boolean(pushLockState.locked),
     mandatoryPushLockReason: String(pushLockState.reason || ''),
     mandatoryPushLockSource: String(pushLockState.source || ''),
@@ -5111,11 +5195,16 @@ function initializeSqliteStartupState() {
   ensureColumn('users', 'isVerified', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn('users', 'emailVerificationToken', 'TEXT');
   ensureColumn('users', 'emailVerificationExpiresAt', 'INTEGER');
+  ensureColumn('users', 'pendingEmail', 'TEXT');
+  ensureColumn('users', 'pendingEmailVerificationToken', 'TEXT');
+  ensureColumn('users', 'pendingEmailVerificationExpiresAt', 'INTEGER');
   ensureColumn('users', 'portalScope', "TEXT NOT NULL DEFAULT 'full'");
   ensureColumn('users', 'requireBiometricSensitive', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn('users', 'adminEmployeeIndustryTrack', 'TEXT DEFAULT NULL');
+  ensureColumn('users', 'preferredLanguage', "TEXT NOT NULL DEFAULT 'en'");
   db.prepare("UPDATE users SET portalScope = 'full' WHERE portalScope IS NULL OR TRIM(portalScope) = ''").run();
   db.prepare("UPDATE users SET isVerified = 1 WHERE role = 'admin' AND (isVerified IS NULL OR isVerified = 0)").run();
+  db.prepare("UPDATE users SET preferredLanguage = 'en' WHERE preferredLanguage IS NULL OR TRIM(preferredLanguage) = ''").run();
   ensureColumn('employee_profiles', 'address', 'TEXT');
   ensureColumn('employee_profiles', 'city', 'TEXT');
   ensureColumn('employee_profiles', 'state', 'TEXT');
@@ -5125,6 +5214,9 @@ function initializeSqliteStartupState() {
   ensureColumn('employee_profiles', 'industryType', 'TEXT');
   ensureColumn('employee_profiles', 'positionTitle', 'TEXT');
   ensureColumn('jobsite_profiles', 'industryTrack', 'TEXT');
+  ensureColumn('jobsite_profiles', 'city', 'TEXT');
+  ensureColumn('jobsite_profiles', 'state', 'TEXT');
+  ensureColumn('jobsite_profiles', 'zip', 'TEXT');
   ensureColumn('jobsite_profiles', 'geofenceLatitude', 'REAL');
   ensureColumn('jobsite_profiles', 'geofenceLongitude', 'REAL');
   ensureColumn('jobs', 'statPayEnabled', 'INTEGER NOT NULL DEFAULT 0');
@@ -6501,16 +6593,22 @@ app.post('/api/auth/register', async (req, res) => {
            contactName,
            phone,
            address,
+           city,
+           state,
+           zip,
            industryTrack,
            geofenceLatitude,
            geofenceLongitude
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).run(
         userId,
         companyName || null,
         contactName || null,
         normalizedPhone || null,
         normalizedAddress || null,
+        city ? String(city).trim() : null,
+        normalizedState || null,
+        normalizedZip || null,
         normalizedIndustryTrack,
         geocodedJobsiteCoordinates ? geocodedJobsiteCoordinates.latitude : null,
         geocodedJobsiteCoordinates ? geocodedJobsiteCoordinates.longitude : null
@@ -6605,11 +6703,58 @@ app.get('/api/verify-email', (req, res) => {
 
   try {
     const user = db
-      .prepare('SELECT id, email, emailVerificationExpiresAt FROM users WHERE emailVerificationToken = ? LIMIT 1')
-      .get(token);
+      .prepare(
+        `SELECT
+           id,
+           email,
+           pendingEmail,
+           emailVerificationToken,
+           emailVerificationExpiresAt,
+           pendingEmailVerificationToken,
+           pendingEmailVerificationExpiresAt
+         FROM users
+         WHERE emailVerificationToken = ? OR pendingEmailVerificationToken = ?
+         LIMIT 1`
+      )
+      .get(token, token);
 
-    if (!user || Number(user.emailVerificationExpiresAt || 0) < Date.now()) {
+    if (!user) {
       return res.status(400).send('<h2>Verification link is invalid or expired.</h2><p>Please request a new verification email and try again.</p>');
+    }
+
+    const isPendingEmailVerification = String(user.pendingEmailVerificationToken || '') === token;
+    const expiresAt = isPendingEmailVerification
+      ? Number(user.pendingEmailVerificationExpiresAt || 0)
+      : Number(user.emailVerificationExpiresAt || 0);
+
+    if (expiresAt < Date.now()) {
+      return res.status(400).send('<h2>Verification link is invalid or expired.</h2><p>Please request a new verification email and try again.</p>');
+    }
+
+    if (isPendingEmailVerification) {
+      const nextEmail = String(user.pendingEmail || '').trim().toLowerCase();
+      if (!nextEmail) {
+        return res.status(400).send('<h2>Email change is no longer available.</h2><p>Please submit the email change request again from Account Settings.</p>');
+      }
+
+      const emailTaken = db
+        .prepare('SELECT id FROM users WHERE id <> ? AND (email = ? OR pendingEmail = ?) LIMIT 1')
+        .get(user.id, nextEmail, nextEmail);
+      if (emailTaken) {
+        return res.status(409).send('<h2>Email address unavailable.</h2><p>Please choose a different email address from Account Settings.</p>');
+      }
+
+      db.prepare(
+        `UPDATE users
+         SET email = ?,
+             pendingEmail = NULL,
+             pendingEmailVerificationToken = NULL,
+             pendingEmailVerificationExpiresAt = NULL,
+             isVerified = 1
+         WHERE id = ?`
+      ).run(nextEmail, user.id);
+      logFlowEvent('pending email verified', { userId: user.id, previousEmail: user.email, nextEmail });
+      return res.send('<h2>Email updated successfully.</h2><p>Your new email address is now active. You can keep using the portal normally.</p><p><a href="/portal-login">Go to portal login</a></p>');
     }
 
     db.prepare('UPDATE users SET isVerified = 1, emailVerificationToken = NULL, emailVerificationExpiresAt = NULL WHERE id = ?').run(user.id);
@@ -7033,7 +7178,7 @@ app.post('/api/auth/login', (req, res) => {
   }
 
   const user = db
-    .prepare('SELECT id, name, email, role, portalScope, passwordHash, passwordSalt, passcodeHash, passcodeSalt, isActive, isVerified, notifyEmailEnabled, notifySmsEnabled, notifyPushEnabled, requireBiometricSensitive FROM users WHERE email = ?')
+    .prepare('SELECT id, name, email, pendingEmail, role, portalScope, passwordHash, passwordSalt, passcodeHash, passcodeSalt, isActive, isVerified, notifyEmailEnabled, notifySmsEnabled, notifyPushEnabled, requireBiometricSensitive, preferredLanguage FROM users WHERE email = ?')
     .get(normalizedEmail);
 
   let isValid = false;
@@ -9989,8 +10134,28 @@ app.delete('/api/messages/:id', authGuard(), (req, res) => {
   return res.json({ deleted: true });
 });
 
-app.patch('/api/account', authGuard(), (req, res) => {
-  const { newEmail, newPassword, newPasscode, removePasscode, notifyEmailEnabled, notifySmsEnabled, notifyPushEnabled, requireBiometricSensitive } = req.body;
+app.patch('/api/account', authGuard(), async (req, res) => {
+  const {
+    name,
+    newEmail,
+    newPassword,
+    newPasscode,
+    removePasscode,
+    notifyEmailEnabled,
+    notifySmsEnabled,
+    notifyPushEnabled,
+    requireBiometricSensitive,
+    preferredLanguage,
+    phone,
+    address,
+    city,
+    state,
+    zip,
+    skills,
+    certifications,
+    companyName,
+    contactName,
+  } = req.body || {};
   const credential = getSubmittedCredential(req.body);
   const normalizedNewEmail = newEmail ? String(newEmail).trim().toLowerCase() : '';
   const normalizedNewPassword = newPassword ? String(newPassword) : '';
@@ -10000,9 +10165,15 @@ app.patch('/api/account', authGuard(), (req, res) => {
   const wantsNotifySms = notifySmsEnabled === undefined ? null : isTruthy(notifySmsEnabled);
   const wantsNotifyPush = notifyPushEnabled === undefined ? null : isTruthy(notifyPushEnabled);
   const wantsSensitiveBiometric = requireBiometricSensitive === undefined ? null : isTruthy(requireBiometricSensitive);
+  const wantsPreferredLanguage = preferredLanguage === undefined ? null : normalizePreferredLanguage(preferredLanguage, '');
+  const wantsName = name === undefined ? null : normalizeSingleLineText(name, 120);
 
   if (!credential.trim()) {
     return res.status(400).json({ error: 'Current password or 4-digit passcode is required.' });
+  }
+
+  if (normalizedNewEmail && !isValidEmailAddress(normalizedNewEmail)) {
+    return res.status(400).json({ error: 'Enter a valid email address.' });
   }
 
   if (normalizedNewPassword && normalizedNewPassword.length < 8) {
@@ -10013,8 +10184,36 @@ app.patch('/api/account', authGuard(), (req, res) => {
     return res.status(400).json({ error: 'Passcode must be exactly 4 digits.' });
   }
 
+  if (name !== undefined && wantsName.length < 2) {
+    return res.status(400).json({ error: 'Full name must be at least 2 characters.' });
+  }
+
+  if (preferredLanguage !== undefined && !wantsPreferredLanguage) {
+    return res.status(400).json({ error: 'Selected language is not supported.' });
+  }
+
   const currentUser = db
-    .prepare('SELECT id, email, passwordHash, passwordSalt, passcodeHash, passcodeSalt, notifyEmailEnabled, notifySmsEnabled, notifyPushEnabled, requireBiometricSensitive FROM users WHERE id = ?')
+    .prepare(
+      `SELECT
+         id,
+         name,
+         email,
+         pendingEmail,
+         pendingEmailVerificationToken,
+         pendingEmailVerificationExpiresAt,
+         role,
+         passwordHash,
+         passwordSalt,
+         passcodeHash,
+         passcodeSalt,
+         notifyEmailEnabled,
+         notifySmsEnabled,
+         notifyPushEnabled,
+         requireBiometricSensitive,
+         preferredLanguage
+       FROM users
+       WHERE id = ?`
+    )
     .get(req.auth.id);
 
   if (!currentUser) {
@@ -10025,7 +10224,7 @@ app.patch('/api/account', authGuard(), (req, res) => {
     return res.status(401).json({ error: 'Current password or passcode is incorrect.' });
   }
 
-  let nextEmail = currentUser.email;
+  let nextName = currentUser.name;
   let nextPasswordHash = currentUser.passwordHash;
   let nextPasswordSalt = currentUser.passwordSalt;
   let nextPasscodeHash = currentUser.passcodeHash || null;
@@ -10034,13 +10233,14 @@ app.patch('/api/account', authGuard(), (req, res) => {
   let nextNotifySmsEnabled = Number(currentUser.notifySmsEnabled) === 1;
   let nextNotifyPushEnabled = Number(currentUser.notifyPushEnabled) === 1;
   let nextRequireBiometricSensitive = Number(currentUser.requireBiometricSensitive) === 1;
+  let nextPreferredLanguage = normalizePreferredLanguage(currentUser.preferredLanguage, 'en');
+  let nextPendingEmail = currentUser.pendingEmail || null;
+  let nextPendingEmailVerificationToken = currentUser.pendingEmailVerificationToken || null;
+  let nextPendingEmailVerificationExpiresAt = Number(currentUser.pendingEmailVerificationExpiresAt || 0) || null;
+  let emailChangeVerificationRecord = null;
 
-  if (normalizedNewEmail && normalizedNewEmail !== currentUser.email) {
-    const emailTaken = db.prepare('SELECT id FROM users WHERE email = ? AND id <> ?').get(normalizedNewEmail, currentUser.id);
-    if (emailTaken) {
-      return res.status(409).json({ error: 'That email is already in use.' });
-    }
-    nextEmail = normalizedNewEmail;
+  if (wantsName !== null) {
+    nextName = wantsName;
   }
 
   if (normalizedNewPassword) {
@@ -10064,6 +10264,7 @@ app.patch('/api/account', authGuard(), (req, res) => {
   if (wantsNotifySms !== null) nextNotifySmsEnabled = wantsNotifySms;
   if (wantsNotifyPush !== null) nextNotifyPushEnabled = wantsNotifyPush;
   if (wantsSensitiveBiometric !== null) nextRequireBiometricSensitive = wantsSensitiveBiometric;
+  if (wantsPreferredLanguage !== null) nextPreferredLanguage = wantsPreferredLanguage;
 
   if (req.auth.role === 'employee' && !nextNotifyPushEnabled) {
     const pushLockState = getMandatoryEmployeePushLockState(currentUser.id, req.auth.email || currentUser.email);
@@ -10072,9 +10273,155 @@ app.patch('/api/account', authGuard(), (req, res) => {
     }
   }
 
+  if (normalizedNewEmail && normalizedNewEmail !== currentUser.email) {
+    if (!isEmailServiceConfigured()) {
+      return res.status(503).json({ error: 'Email changes are unavailable until outbound email is configured on the server.' });
+    }
+
+    const emailTaken = db
+      .prepare('SELECT id FROM users WHERE id <> ? AND (email = ? OR pendingEmail = ?) LIMIT 1')
+      .get(currentUser.id, normalizedNewEmail, normalizedNewEmail);
+    if (emailTaken) {
+      return res.status(409).json({ error: 'That email is already in use.' });
+    }
+
+    emailChangeVerificationRecord = createPendingEmailVerificationRecord();
+    nextPendingEmail = normalizedNewEmail;
+    nextPendingEmailVerificationToken = emailChangeVerificationRecord.rawToken;
+    nextPendingEmailVerificationExpiresAt = emailChangeVerificationRecord.expiresAt;
+  }
+
+  let nextProfile = null;
+  let profileChanged = false;
+
+  if (currentUser.role === 'employee') {
+    const currentProfile = db
+      .prepare('SELECT phone, address, city, state, zip, skills, certifications FROM employee_profiles WHERE userId = ?')
+      .get(currentUser.id) || {};
+
+    const phoneInput = phone === undefined ? String(currentProfile.phone || '') : String(phone || '').trim();
+    const normalizedPhone = phoneInput ? normalizePhoneNumber(phoneInput) : '';
+    if (phone !== undefined && phoneInput && !normalizedPhone) {
+      return res.status(400).json({ error: 'Phone number must be exactly 10 digits.' });
+    }
+
+    const nextAddressLine = address === undefined ? String(currentProfile.address || '').trim() : normalizeMultiLineText(address, 160);
+    const nextCity = city === undefined ? String(currentProfile.city || '').trim() : normalizeSingleLineText(city, 80);
+    const nextState = state === undefined
+      ? String(currentProfile.state || '').trim().toUpperCase()
+      : normalizeSingleLineText(state, 2).toUpperCase();
+    const nextZip = zip === undefined ? String(currentProfile.zip || '').trim() : normalizeSingleLineText(zip, 10);
+    const addressValidationError = validateStructuredAddress(
+      nextAddressLine,
+      nextCity,
+      nextState,
+      nextZip,
+      'Street address, city, state, and ZIP code are required when updating address.'
+    );
+    if (addressValidationError) {
+      return res.status(400).json({ error: addressValidationError });
+    }
+
+    nextProfile = {
+      phone: normalizedPhone || null,
+      address: nextAddressLine || null,
+      city: nextCity || null,
+      state: nextState || null,
+      zip: nextZip || null,
+      skills: skills === undefined ? (currentProfile.skills || null) : normalizeMultiLineText(skills, 240) || null,
+      certifications: certifications === undefined ? (currentProfile.certifications || null) : normalizeMultiLineText(certifications, 240) || null,
+    };
+
+    profileChanged = [
+      ['phone', nextProfile.phone, currentProfile.phone || null],
+      ['address', nextProfile.address, currentProfile.address || null],
+      ['city', nextProfile.city, currentProfile.city || null],
+      ['state', nextProfile.state, currentProfile.state || null],
+      ['zip', nextProfile.zip, currentProfile.zip || null],
+      ['skills', nextProfile.skills, currentProfile.skills || null],
+      ['certifications', nextProfile.certifications, currentProfile.certifications || null],
+    ].some(([, nextValue, currentValue]) => String(nextValue || '') !== String(currentValue || ''));
+  }
+
+  if (currentUser.role === 'jobsite') {
+    const currentProfile = db
+      .prepare(
+        `SELECT
+           companyName,
+           contactName,
+           phone,
+           address,
+           city,
+           state,
+           zip,
+           industryTrack,
+           geofenceLatitude,
+           geofenceLongitude
+         FROM jobsite_profiles
+         WHERE userId = ?`
+      )
+      .get(currentUser.id) || {};
+
+    const clientProfileUpdateRequested = [companyName, contactName, phone, address, city, state, zip].some((value) => value !== undefined);
+    const nextCompanyName = companyName === undefined ? String(currentProfile.companyName || '').trim() : normalizeSingleLineText(companyName, 160);
+    const nextContactName = contactName === undefined ? String(currentProfile.contactName || '').trim() : normalizeSingleLineText(contactName, 120);
+    const phoneInput = phone === undefined ? String(currentProfile.phone || '') : String(phone || '').trim();
+    const normalizedPhone = phoneInput ? normalizePhoneNumber(phoneInput) : '';
+    if (phone !== undefined && phoneInput && !normalizedPhone) {
+      return res.status(400).json({ error: 'Phone number must be exactly 10 digits.' });
+    }
+
+    const nextAddressLine = address === undefined ? String(currentProfile.address || '').trim() : normalizeMultiLineText(address, 160);
+    const nextCity = city === undefined ? String(currentProfile.city || '').trim() : normalizeSingleLineText(city, 80);
+    const nextState = state === undefined
+      ? String(currentProfile.state || '').trim().toUpperCase()
+      : normalizeSingleLineText(state, 2).toUpperCase();
+    const nextZip = zip === undefined ? String(currentProfile.zip || '').trim() : normalizeSingleLineText(zip, 10);
+    const addressValidationError = validateStructuredAddress(
+      nextAddressLine,
+      nextCity,
+      nextState,
+      nextZip,
+      'Street address, city, state, and ZIP code are required when updating mailing address.'
+    );
+    if (addressValidationError) {
+      return res.status(400).json({ error: addressValidationError });
+    }
+
+    if (clientProfileUpdateRequested && !nextCompanyName) {
+      return res.status(400).json({ error: 'Company name cannot be empty.' });
+    }
+
+    if (clientProfileUpdateRequested && !nextContactName) {
+      return res.status(400).json({ error: 'Primary contact name cannot be empty.' });
+    }
+
+    nextProfile = {
+      companyName: nextCompanyName || null,
+      contactName: nextContactName || null,
+      phone: normalizedPhone || null,
+      address: nextAddressLine || null,
+      city: nextCity || null,
+      state: nextState || null,
+      zip: nextZip || null,
+      industryTrack: currentProfile.industryTrack || null,
+      geofenceLatitude: currentProfile.geofenceLatitude ?? null,
+      geofenceLongitude: currentProfile.geofenceLongitude ?? null,
+    };
+
+    profileChanged = [
+      ['companyName', nextProfile.companyName, currentProfile.companyName || null],
+      ['contactName', nextProfile.contactName, currentProfile.contactName || null],
+      ['phone', nextProfile.phone, currentProfile.phone || null],
+      ['address', nextProfile.address, currentProfile.address || null],
+      ['city', nextProfile.city, currentProfile.city || null],
+      ['state', nextProfile.state, currentProfile.state || null],
+      ['zip', nextProfile.zip, currentProfile.zip || null],
+    ].some(([, nextValue, currentValue]) => String(nextValue || '') !== String(currentValue || ''));
+  }
+
   const credentialsChanged =
-    nextEmail !== currentUser.email
-    || nextPasswordHash !== currentUser.passwordHash
+    nextPasswordHash !== currentUser.passwordHash
     || nextPasswordSalt !== currentUser.passwordSalt
     || String(nextPasscodeHash || '') !== String(currentUser.passcodeHash || '')
     || String(nextPasscodeSalt || '') !== String(currentUser.passcodeSalt || '');
@@ -10083,43 +10430,145 @@ app.patch('/api/account', authGuard(), (req, res) => {
     || nextNotifySmsEnabled !== (Number(currentUser.notifySmsEnabled) === 1)
     || nextNotifyPushEnabled !== (Number(currentUser.notifyPushEnabled) === 1)
     || nextRequireBiometricSensitive !== (Number(currentUser.requireBiometricSensitive) === 1);
+  const nameChanged = nextName !== currentUser.name;
+  const languageChanged = nextPreferredLanguage !== normalizePreferredLanguage(currentUser.preferredLanguage, 'en');
+  const emailChangeRequested = Boolean(emailChangeVerificationRecord);
 
-  if (!credentialsChanged && !preferencesChanged) {
+  if (!nameChanged && !credentialsChanged && !preferencesChanged && !languageChanged && !profileChanged && !emailChangeRequested) {
     return res.status(400).json({ error: 'No account settings were changed.' });
   }
 
-  db.prepare(
-    `UPDATE users
-     SET email = ?,
-         passwordHash = ?,
-         passwordSalt = ?,
-         passcodeHash = ?,
-         passcodeSalt = ?,
-         notifyEmailEnabled = ?,
-         notifySmsEnabled = ?,
-         notifyPushEnabled = ?,
-         requireBiometricSensitive = ?
-     WHERE id = ?`
-  ).run(
-    nextEmail,
-    nextPasswordHash,
-    nextPasswordSalt,
-    nextPasscodeHash,
-    nextPasscodeSalt,
-    nextNotifyEmailEnabled ? 1 : 0,
-    nextNotifySmsEnabled ? 1 : 0,
-    nextNotifyPushEnabled ? 1 : 0,
-    nextRequireBiometricSensitive ? 1 : 0,
-    currentUser.id
-  );
-
-  if (!nextNotifyPushEnabled) {
-    db.prepare('DELETE FROM notification_subscriptions WHERE userId = ?').run(currentUser.id);
+  if (emailChangeVerificationRecord) {
+    try {
+      await sendPendingEmailVerificationEmail(
+        { id: currentUser.id, name: nextName, email: currentUser.email },
+        nextPendingEmail,
+        emailChangeVerificationRecord,
+        'account_update'
+      );
+    } catch (error) {
+      logCaughtException('pending email verification send', error, {
+        userId: currentUser.id,
+        nextEmail: nextPendingEmail,
+      });
+      return res.status(502).json({ error: 'Unable to send the verification email for your new address right now.' });
+    }
   }
+
+  const tx = db.transaction(() => {
+    db.prepare(
+      `UPDATE users
+       SET name = ?,
+           passwordHash = ?,
+           passwordSalt = ?,
+           passcodeHash = ?,
+           passcodeSalt = ?,
+           notifyEmailEnabled = ?,
+           notifySmsEnabled = ?,
+           notifyPushEnabled = ?,
+           requireBiometricSensitive = ?,
+           preferredLanguage = ?,
+           pendingEmail = ?,
+           pendingEmailVerificationToken = ?,
+           pendingEmailVerificationExpiresAt = ?
+       WHERE id = ?`
+    ).run(
+      nextName,
+      nextPasswordHash,
+      nextPasswordSalt,
+      nextPasscodeHash,
+      nextPasscodeSalt,
+      nextNotifyEmailEnabled ? 1 : 0,
+      nextNotifySmsEnabled ? 1 : 0,
+      nextNotifyPushEnabled ? 1 : 0,
+      nextRequireBiometricSensitive ? 1 : 0,
+      nextPreferredLanguage,
+      nextPendingEmail,
+      nextPendingEmailVerificationToken,
+      nextPendingEmailVerificationExpiresAt,
+      currentUser.id
+    );
+
+    if (currentUser.role === 'employee' && nextProfile) {
+      db.prepare(
+        `INSERT INTO employee_profiles (userId, phone, address, city, state, zip, skills, certifications)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(userId) DO UPDATE SET
+           phone = excluded.phone,
+           address = excluded.address,
+           city = excluded.city,
+           state = excluded.state,
+           zip = excluded.zip,
+           skills = excluded.skills,
+           certifications = excluded.certifications`
+      ).run(
+        currentUser.id,
+        nextProfile.phone,
+        nextProfile.address,
+        nextProfile.city,
+        nextProfile.state,
+        nextProfile.zip,
+        nextProfile.skills,
+        nextProfile.certifications
+      );
+
+      if (nameChanged) {
+        db.prepare('UPDATE applications SET fullName = ? WHERE userId = ?').run(nextName, currentUser.id);
+      }
+    }
+
+    if (currentUser.role === 'jobsite' && nextProfile) {
+      db.prepare(
+        `INSERT INTO jobsite_profiles (
+           userId,
+           companyName,
+           contactName,
+           phone,
+           address,
+           city,
+           state,
+           zip,
+           industryTrack,
+           geofenceLatitude,
+           geofenceLongitude
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(userId) DO UPDATE SET
+           companyName = excluded.companyName,
+           contactName = excluded.contactName,
+           phone = excluded.phone,
+           address = excluded.address,
+           city = excluded.city,
+           state = excluded.state,
+           zip = excluded.zip`
+      ).run(
+        currentUser.id,
+        nextProfile.companyName,
+        nextProfile.contactName,
+        nextProfile.phone,
+        nextProfile.address,
+        nextProfile.city,
+        nextProfile.state,
+        nextProfile.zip,
+        nextProfile.industryTrack,
+        nextProfile.geofenceLatitude,
+        nextProfile.geofenceLongitude
+      );
+    }
+
+    if (!nextNotifyPushEnabled) {
+      db.prepare('DELETE FROM notification_subscriptions WHERE userId = ?').run(currentUser.id);
+    }
+  });
+
+  tx();
 
   res.json({
     updated: true,
-    email: nextEmail,
+    name: nextName,
+    email: currentUser.email,
+    pendingEmail: nextPendingEmail,
+    emailChangePending: Boolean(nextPendingEmail),
+    emailChangeVerificationExpiresAt: nextPendingEmailVerificationExpiresAt || Number(currentUser.pendingEmailVerificationExpiresAt || 0) || null,
     passcodeEnabled: Boolean(nextPasscodeHash),
     notificationPreferences: {
       email: nextNotifyEmailEnabled,
@@ -10129,25 +10578,32 @@ app.patch('/api/account', authGuard(), (req, res) => {
     securityPreferences: {
       requireBiometricSensitive: nextRequireBiometricSensitive,
     },
+    preferredLanguage: nextPreferredLanguage,
+    profile: nextProfile,
   });
 });
 
 // Lightweight preference-only update — no credential required
 app.patch('/api/account/preferences', authGuard(), (req, res) => {
-  const { notifyEmailEnabled, notifySmsEnabled, notifyPushEnabled } = req.body;
+  const { notifyEmailEnabled, notifySmsEnabled, notifyPushEnabled, preferredLanguage } = req.body || {};
   const wantsEmail = notifyEmailEnabled === undefined ? null : isTruthy(notifyEmailEnabled);
   const wantsSms   = notifySmsEnabled   === undefined ? null : isTruthy(notifySmsEnabled);
   const wantsPush  = notifyPushEnabled  === undefined ? null : isTruthy(notifyPushEnabled);
-  if (wantsEmail === null && wantsSms === null && wantsPush === null) {
+  const wantsLanguage = preferredLanguage === undefined ? null : normalizePreferredLanguage(preferredLanguage, '');
+  if (preferredLanguage !== undefined && !wantsLanguage) {
+    return res.status(400).json({ error: 'Selected language is not supported.' });
+  }
+  if (wantsEmail === null && wantsSms === null && wantsPush === null && wantsLanguage === null) {
     return res.status(400).json({ error: 'No preferences specified.' });
   }
   const user = db.prepare(
-    'SELECT notifyEmailEnabled, notifySmsEnabled, notifyPushEnabled FROM users WHERE id = ?'
+    'SELECT notifyEmailEnabled, notifySmsEnabled, notifyPushEnabled, preferredLanguage FROM users WHERE id = ?'
   ).get(req.auth.id);
   if (!user) return res.status(404).json({ error: 'Account not found.' });
   const nextEmail = wantsEmail !== null ? wantsEmail : (Number(user.notifyEmailEnabled) === 1);
   const nextSms   = wantsSms   !== null ? wantsSms   : (Number(user.notifySmsEnabled)   === 1);
   const nextPush  = wantsPush  !== null ? wantsPush  : (Number(user.notifyPushEnabled)  === 1);
+  const nextPreferredLanguage = wantsLanguage !== null ? wantsLanguage : normalizePreferredLanguage(user.preferredLanguage, 'en');
   if (req.auth.role === 'employee' && !nextPush) {
     const pushLockState = getMandatoryEmployeePushLockState(req.auth.id, req.auth.email);
     if (pushLockState.locked) {
@@ -10155,12 +10611,16 @@ app.patch('/api/account/preferences', authGuard(), (req, res) => {
     }
   }
   db.prepare(
-    'UPDATE users SET notifyEmailEnabled = ?, notifySmsEnabled = ?, notifyPushEnabled = ? WHERE id = ?'
-  ).run(nextEmail ? 1 : 0, nextSms ? 1 : 0, nextPush ? 1 : 0, req.auth.id);
+    'UPDATE users SET notifyEmailEnabled = ?, notifySmsEnabled = ?, notifyPushEnabled = ?, preferredLanguage = ? WHERE id = ?'
+  ).run(nextEmail ? 1 : 0, nextSms ? 1 : 0, nextPush ? 1 : 0, nextPreferredLanguage, req.auth.id);
   if (!nextPush) {
     db.prepare('DELETE FROM notification_subscriptions WHERE userId = ?').run(req.auth.id);
   }
-  res.json({ updated: true, notificationPreferences: { email: nextEmail, sms: nextSms, push: nextPush } });
+  res.json({
+    updated: true,
+    notificationPreferences: { email: nextEmail, sms: nextSms, push: nextPush },
+    preferredLanguage: nextPreferredLanguage,
+  });
 });
 
 app.get('/api/portal/jobsite/dashboard', authGuard(['jobsite']), (req, res) => {
@@ -10622,11 +11082,12 @@ app.patch('/api/portal/jobsite/profile', authGuard(['jobsite']), (req, res) => {
 
   const nextCompanyName = String(companyName || '').trim();
   const nextContactName = String(contactName || '').trim();
-  const nextPhone = String(phone || '').trim() || null;
-  const nextAddressLine = String(address || '').trim();
-  const nextCity = String(city || '').trim();
-  const nextState = String(state || '').trim().toUpperCase();
-  const nextZip = String(zip || '').trim();
+  const phoneInput = String(phone || '').trim();
+  const nextPhone = phoneInput ? normalizePhoneNumber(phoneInput) : null;
+  const nextAddressLine = normalizeMultiLineText(address, 160);
+  const nextCity = normalizeSingleLineText(city, 80);
+  const nextState = normalizeSingleLineText(state, 2).toUpperCase();
+  const nextZip = normalizeSingleLineText(zip, 10);
 
   if (!nextCompanyName) {
     return res.status(400).json({ error: 'Company name cannot be empty.' });
@@ -10636,22 +11097,26 @@ app.patch('/api/portal/jobsite/profile', authGuard(['jobsite']), (req, res) => {
     return res.status(400).json({ error: 'Primary contact name cannot be empty.' });
   }
 
-  const hasAddressData = Boolean(nextAddressLine || nextCity || nextState || nextZip);
-  if (hasAddressData && (!nextAddressLine || !nextCity || !nextState || !nextZip)) {
-    return res.status(400).json({ error: 'Street address, city, state, and ZIP code are required when updating physical address.' });
+  if (phoneInput && !nextPhone) {
+    return res.status(400).json({ error: 'Phone number must be exactly 10 digits.' });
   }
 
-  if (nextState && !/^[A-Z]{2}$/.test(nextState)) {
-    return res.status(400).json({ error: 'State must be a 2-letter code.' });
+  const addressValidationError = validateStructuredAddress(
+    nextAddressLine,
+    nextCity,
+    nextState,
+    nextZip,
+    'Street address, city, state, and ZIP code are required when updating physical address.'
+  );
+  if (addressValidationError) {
+    return res.status(400).json({ error: addressValidationError });
   }
-
-  const nextAddress = hasAddressData ? [nextAddressLine, nextCity, nextState, nextZip].join(', ') : null;
 
   db.prepare(
     `UPDATE jobsite_profiles
-     SET companyName = ?, contactName = ?, phone = ?, address = ?
+     SET companyName = ?, contactName = ?, phone = ?, address = ?, city = ?, state = ?, zip = ?
      WHERE userId = ?`
-  ).run(nextCompanyName, nextContactName, nextPhone, nextAddress, req.auth.id);
+  ).run(nextCompanyName, nextContactName, nextPhone, nextAddressLine || null, nextCity || null, nextState || null, nextZip || null, req.auth.id);
 
   return res.json({
     updated: true,
@@ -10659,7 +11124,7 @@ app.patch('/api/portal/jobsite/profile', authGuard(['jobsite']), (req, res) => {
       companyName: nextCompanyName,
       contactName: nextContactName,
       phone: nextPhone,
-      address: nextAddress,
+      address: nextAddressLine || null,
       city: nextCity || null,
       state: nextState || null,
       zip: nextZip || null,

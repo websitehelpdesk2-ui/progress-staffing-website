@@ -1602,6 +1602,70 @@ a {
   gap: 0.5rem;
 }
 
+.portal-language-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0.55rem;
+  border: 1px solid rgba(74, 99, 83, 0.2);
+  border-radius: 999px;
+  background: rgba(242, 247, 240, 0.82);
+  color: rgba(35, 58, 44, 0.92);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.portal-language-picker select {
+  min-width: 120px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+}
+
+.portal-language-picker select:focus {
+  outline: none;
+}
+
+html[dir="rtl"] .portal-page {
+  direction: rtl;
+}
+
+html[dir="rtl"] .portal-header-actions,
+html[dir="rtl"] .portal-section__header,
+html[dir="rtl"] .form-actions,
+html[dir="rtl"] .portal-btn-row,
+html[dir="rtl"] .admin-inline-row,
+html[dir="rtl"] .portal-welcome__meta {
+  flex-direction: row-reverse;
+}
+
+html[dir="rtl"] .profile-info__item,
+html[dir="rtl"] .form-row,
+html[dir="rtl"] .portal-review-header,
+html[dir="rtl"] .portal-chat,
+html[dir="rtl"] .portal-table {
+  direction: rtl;
+}
+
+html[dir="rtl"] .profile-info__label,
+html[dir="rtl"] .portal-section__title,
+html[dir="rtl"] .portal-form-hint,
+html[dir="rtl"] .admin-section-copy,
+html[dir="rtl"] .portal-chat__empty {
+  text-align: right;
+}
+
+html[dir="rtl"] .portal-table th,
+html[dir="rtl"] .portal-table td,
+html[dir="rtl"] .portal-chat__message,
+html[dir="rtl"] input,
+html[dir="rtl"] textarea,
+html[dir="rtl"] select {
+  text-align: right;
+}
+
 .portal-page #portalThemeToggleBtn {
   border-color: rgba(74, 99, 83, 0.34);
   color: rgba(35, 58, 44, 0.9);

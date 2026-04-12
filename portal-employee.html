@@ -19,6 +19,14 @@
         <span class="logo__text">Employee Dashboard</span>
       </a>
       <div class="portal-header-actions">
+        <label class="portal-language-picker" for="portalLanguageSelect">
+          <span id="portalLanguageLabel">Language</span>
+          <select id="portalLanguageSelect" class="input input--sm">
+            <option value="en">English</option>
+            <option value="es">Spanish</option>
+            <option value="ar">Arabic</option>
+          </select>
+        </label>
         <button id="portalThemeToggleBtn" class="button button--ghost button--sm" type="button">Switch to Dark Mode</button>
         <button id="portalLogoutBtn" class="button button--sm" type="button">Log Out</button>
       </div>
@@ -952,32 +960,63 @@
 
       <div class="portal-section">
         <div class="portal-section__header">
-          <h2 class="portal-section__title">Account Settings</h2>
+          <h2 id="portalAccountSectionTitle" class="portal-section__title">Account Settings</h2>
         </div>
         <form id="portalAccountForm" class="contact-form portal-account-form" novalidate>
           <div id="portalAccountMessage" class="form-message" aria-live="polite"></div>
           <div class="form-row">
-            <label for="portalAccountName">Name</label>
-            <input id="portalAccountName" type="text" readonly />
+            <label for="portalAccountName">Full Name</label>
+            <input id="portalAccountName" name="name" type="text" maxlength="120" autocomplete="name" />
           </div>
           <div class="form-row">
             <label for="portalAccountUserId">User ID</label>
             <input id="portalAccountUserId" type="text" readonly />
           </div>
           <div class="form-row">
-            <label for="portalAccountEmail">Email</label>
+            <label for="portalAccountEmail">Current Email</label>
             <input id="portalAccountEmail" type="text" readonly />
           </div>
+          <p id="portalAccountPendingEmailNotice" class="portal-form-hint" hidden></p>
           <div class="form-row">
             <label for="portalAccountPasswordStatus">Current Password</label>
             <input id="portalAccountPasswordStatus" type="text" value="Hidden for security" readonly />
+          </div>
+          <div class="form-row">
+            <label for="portalAccountPhone">Phone</label>
+            <input id="portalAccountPhone" name="phone" type="tel" placeholder="(123) 456-7890" autocomplete="tel" />
+          </div>
+          <div class="form-row">
+            <label for="portalAccountAddress">Street Address</label>
+            <input id="portalAccountAddress" name="address" type="text" placeholder="123 Main St" autocomplete="address-line1" />
+          </div>
+          <div class="portal-auto-grid">
+            <div class="form-row">
+              <label for="portalAccountCity">City</label>
+              <input id="portalAccountCity" name="city" type="text" placeholder="Las Vegas" autocomplete="address-level2" />
+            </div>
+            <div class="form-row">
+              <label for="portalAccountState">State</label>
+              <input id="portalAccountState" name="state" type="text" maxlength="2" placeholder="NV" autocomplete="address-level1" />
+            </div>
+            <div class="form-row">
+              <label for="portalAccountZip">ZIP Code</label>
+              <input id="portalAccountZip" name="zip" type="text" inputmode="numeric" maxlength="10" placeholder="89101" autocomplete="postal-code" />
+            </div>
+          </div>
+          <div class="form-row">
+            <label for="portalAccountSkills">Skills</label>
+            <input id="portalAccountSkills" name="skills" type="text" placeholder="Forklift, EMR, Patient transport" />
+          </div>
+          <div class="form-row">
+            <label for="portalAccountCertifications">Certifications</label>
+            <input id="portalAccountCertifications" name="certifications" type="text" placeholder="BLS, CNA" />
           </div>
           <div class="form-row">
             <label for="portalCurrentCredential">Current Password or Passcode</label>
             <input id="portalCurrentCredential" name="currentCredential" type="password" required placeholder="Password or 4-digit passcode" />
           </div>
           <div class="form-row">
-            <label for="portalNewEmail">New Email <span class="admin-optional-text">(optional)</span></label>
+            <label for="portalNewEmail">Change Email <span class="admin-optional-text">(optional)</span></label>
             <input id="portalNewEmail" name="newEmail" type="email" placeholder="new-email@example.com" />
           </div>
           <div class="form-row">

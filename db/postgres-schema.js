@@ -3,6 +3,7 @@ CREATE TABLE IF NOT EXISTS users (
   id BIGSERIAL PRIMARY KEY,
   name TEXT NOT NULL,
   email TEXT NOT NULL UNIQUE,
+  pendingEmail TEXT,
   role TEXT NOT NULL CHECK(role IN ('employee', 'jobsite', 'admin')),
   passwordHash TEXT NOT NULL,
   passwordSalt TEXT NOT NULL,
@@ -17,9 +18,12 @@ CREATE TABLE IF NOT EXISTS users (
   isVerified BIGINT NOT NULL DEFAULT 0,
   emailVerificationToken TEXT,
   emailVerificationExpiresAt BIGINT,
+  pendingEmailVerificationToken TEXT,
+  pendingEmailVerificationExpiresAt BIGINT,
   portalScope TEXT NOT NULL DEFAULT 'full',
   requireBiometricSensitive BIGINT NOT NULL DEFAULT 0,
-  adminEmployeeIndustryTrack TEXT DEFAULT NULL
+  adminEmployeeIndustryTrack TEXT DEFAULT NULL,
+  preferredLanguage TEXT NOT NULL DEFAULT 'en'
 );
 
 CREATE TABLE IF NOT EXISTS applications (
@@ -60,10 +64,21 @@ CREATE TABLE IF NOT EXISTS jobsite_profiles (
   contactName TEXT,
   phone TEXT,
   address TEXT,
+  city TEXT,
+  state TEXT,
+  zip TEXT,
   geofenceLatitude DOUBLE PRECISION,
   geofenceLongitude DOUBLE PRECISION,
   industryTrack TEXT
 );
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS pendingEmail TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS pendingEmailVerificationToken TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS pendingEmailVerificationExpiresAt BIGINT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS preferredLanguage TEXT NOT NULL DEFAULT 'en';
+ALTER TABLE jobsite_profiles ADD COLUMN IF NOT EXISTS city TEXT;
+ALTER TABLE jobsite_profiles ADD COLUMN IF NOT EXISTS state TEXT;
+ALTER TABLE jobsite_profiles ADD COLUMN IF NOT EXISTS zip TEXT;
 
 CREATE TABLE IF NOT EXISTS jobs (
   id BIGSERIAL PRIMARY KEY,

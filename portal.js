@@ -1,10 +1,611 @@
 const TOKEN_KEY = 'psa_portal_token';
 const PORTAL_THEME_KEY = 'psa_portal_theme';
+const PORTAL_LANGUAGE_KEY = 'psa_portal_language';
 const IS_FILE_PROTOCOL = window.location.protocol === 'file:';
 const API_BASE_URL = IS_FILE_PROTOCOL ? 'http://localhost:3000' : '';
 
+const PORTAL_DEFAULT_LANGUAGE = 'en';
+const PORTAL_RTL_LANGUAGES = new Set(['ar']);
+const PORTAL_LANGUAGE_LABELS = {
+  en: 'English',
+  es: 'Español',
+  ar: 'العربية',
+};
+
+const PORTAL_TRANSLATIONS = {
+  en: {
+    header: {
+      language: 'Language',
+      logout: 'Log Out',
+      switchToDarkMode: 'Switch to Dark Mode',
+      switchToLightMode: 'Switch to Light Mode',
+      employeeDashboard: 'Employee Dashboard',
+      clientDashboard: 'Client Dashboard',
+      employeeSubtitle: "Welcome back. Here's your profile and onboarding status.",
+      clientSubtitle: 'Manage your job postings and company profile.',
+      welcomeEmployee: 'Welcome {name}',
+      welcomeClient: 'Welcome {name}',
+    },
+    common: {
+      loading: 'Loading...',
+      loadingConversation: 'Loading conversation...',
+      notSet: 'Not set',
+      edit: 'Edit',
+      cancel: 'Cancel',
+      saveProfile: 'Save Profile',
+      saveChanges: 'Save Changes',
+      saveAccountSettings: 'Save Account Settings',
+      clearRead: 'Clear Read',
+      enablePushNotifications: 'Enable Push Notifications',
+      notificationChannels: 'Notification Channels',
+      emailNotifications: 'Email Notifications',
+      textNotifications: 'Text Notifications',
+      appPushNotifications: 'App Push Notifications',
+      recipient: 'Recipient',
+      message: 'Message',
+      selectRecipient: 'Select recipient',
+      typeYourMessage: 'Type your message',
+      sendMessage: 'Send Message',
+      phone: 'Phone',
+      streetAddress: 'Street Address',
+      city: 'City',
+      state: 'State',
+      zipCode: 'ZIP Code',
+      when: 'When',
+      type: 'Type',
+      activity: 'Activity',
+      status: 'Status',
+      action: 'Action',
+      close: 'Close',
+    },
+    account: {
+      title: 'Account Settings',
+      accountTitle: 'Account',
+      fullName: 'Full Name',
+      userId: 'User ID',
+      currentEmail: 'Current Email',
+      changeEmail: 'Change Email',
+      changeEmailPlaceholder: 'new-email@example.com',
+      pendingEmailNotice: 'Verification sent to {email}. Confirm the new address before it becomes active.',
+      currentPassword: 'Current Password',
+      currentCredential: 'Current Password or Passcode',
+      currentCredentialPlaceholder: 'Password or 4-digit passcode',
+      newPassword: 'New Password',
+      newPasswordPlaceholder: 'At least 8 characters',
+      newPasscode: 'New 4-Digit Passcode',
+      newPasscodePlaceholder: '1234',
+      removeStoredPasscode: 'Remove stored passcode',
+      mailingAddress: 'Mailing Address',
+      skills: 'Skills',
+      certifications: 'Certifications',
+      companyName: 'Company Name',
+      contactName: 'Contact Name',
+      noChanges: 'No account settings were changed.',
+      currentCredentialRequired: 'Current password or 4-digit passcode is required.',
+      fullNameRequired: 'Full name must be at least 2 characters.',
+      passwordMin: 'New password must be at least 8 characters.',
+      passcodeInvalid: 'Passcode must be exactly 4 digits.',
+      phoneInvalid: 'Phone number must be exactly 10 digits.',
+      addressRequired: 'Enter street address, city, state, and ZIP code.',
+      stateInvalid: 'State must be a 2-letter code (for example, NV).',
+      zipInvalid: 'ZIP code must be 5 digits or ZIP+4 format.',
+      companyNameRequired: 'Company name is required and cannot be empty.',
+      contactNameRequired: 'Primary contact name is required and cannot be empty.',
+      saved: 'Account settings saved.',
+      savedPasscode: 'Account settings saved. Passcode is active.',
+      savedPendingEmail: 'Account settings saved. Check {email} to verify your new email address.',
+      emailLabel: 'Email',
+    },
+    notifications: {
+      title: 'Notifications',
+      employeeDescription: 'Enable browser notifications to receive alerts when your uploaded documents are approved or denied by an administrator.',
+      employeeActiveDescription: 'Enable browser notifications to receive live alerts when your documents are reviewed, messages arrive, and shift updates are available.',
+      clientDescription: 'Enable browser notifications to receive alerts when contracts, messages, and timesheet updates need your attention.',
+      unavailable: 'Push notifications are not available in this browser.',
+      blocked: 'Browser notifications are blocked for this site.',
+      enabled: 'Push notifications are enabled for this device.',
+      enabledButton: 'Push Notifications Enabled',
+      employeeEnabled: 'Status: Active. Push notifications are enabled for this device and shift alerts are active.',
+      pendingApproval: 'Pending Admin Approval',
+      permissionDenied: 'Notification permission was not granted.',
+      subscriptionFailed: 'Failed to save push notification subscription.',
+      deviceEnabled: 'Push notifications enabled for this device.',
+    },
+    messaging: {
+      title: 'Messages',
+      invalidRecipient: 'Select a valid recipient.',
+      messageRequired: 'Message body is required.',
+      sending: 'Sending...',
+      sent: 'Message sent successfully.',
+      deleted: 'Message deleted from your conversation view.',
+      deleteFailed: 'Unable to delete this message.',
+    },
+    employee: {
+      registeredRoles: 'Registered Roles',
+      documents: 'Documents',
+      profileComplete: 'Profile Complete',
+      acceptedShifts: 'Accepted Shifts',
+      myProfile: 'My Profile',
+      position: 'Position',
+      backgroundCheck: 'Background Check',
+      address: 'Address',
+      ssn: 'SSN',
+      ssnOnFile: 'On File (Encrypted)',
+      ssnMissing: 'Not Submitted',
+      currentShifts: 'Current Shifts',
+      pastShifts: 'Past Shifts',
+      openShifts: 'Open Shifts',
+      noCurrentAssignments: 'No current assignments.',
+      noPastAssignments: 'No past assignments.',
+      noApplications: 'No applications submitted yet.',
+      noDocuments: 'No documents uploaded yet.',
+      waitingBackground: 'Waiting for admin-uploaded background',
+    },
+    jobsite: {
+      totalShifts: 'Total Shifts',
+      openShifts: 'Open Shifts',
+      closedShifts: 'Closed Shifts',
+      companyProfile: 'Company Profile',
+      company: 'Company',
+      contact: 'Contact',
+      industryTrack: 'Industry Track',
+      yourShifts: 'Your Shifts',
+      postNewShift: 'Post a New Shift',
+      assignedWorkers: 'Assigned Workers',
+      noJobs: 'No jobs posted yet. Use the form on the right to create your first job.',
+      noAssignedWorkers: 'No workers currently assigned to your shifts.',
+    },
+  },
+  es: {
+    header: {
+      language: 'Idioma',
+      logout: 'Cerrar sesión',
+      switchToDarkMode: 'Cambiar a modo oscuro',
+      switchToLightMode: 'Cambiar a modo claro',
+      employeeDashboard: 'Panel del empleado',
+      clientDashboard: 'Panel del cliente',
+      employeeSubtitle: 'Bienvenido de nuevo. Aquí están tu perfil y tu estado de incorporación.',
+      clientSubtitle: 'Administra tus turnos publicados y el perfil de tu empresa.',
+      welcomeEmployee: 'Bienvenido {name}',
+      welcomeClient: 'Bienvenido {name}',
+    },
+    common: {
+      loading: 'Cargando...',
+      loadingConversation: 'Cargando conversación...',
+      notSet: 'Sin definir',
+      edit: 'Editar',
+      cancel: 'Cancelar',
+      saveProfile: 'Guardar perfil',
+      saveChanges: 'Guardar cambios',
+      saveAccountSettings: 'Guardar configuración de la cuenta',
+      clearRead: 'Borrar leídas',
+      enablePushNotifications: 'Activar notificaciones push',
+      notificationChannels: 'Canales de notificación',
+      emailNotifications: 'Notificaciones por correo',
+      textNotifications: 'Notificaciones por texto',
+      appPushNotifications: 'Notificaciones push de la app',
+      recipient: 'Destinatario',
+      message: 'Mensaje',
+      selectRecipient: 'Selecciona un destinatario',
+      typeYourMessage: 'Escribe tu mensaje',
+      sendMessage: 'Enviar mensaje',
+      phone: 'Teléfono',
+      streetAddress: 'Dirección',
+      city: 'Ciudad',
+      state: 'Estado',
+      zipCode: 'Código postal',
+      when: 'Cuándo',
+      type: 'Tipo',
+      activity: 'Actividad',
+      status: 'Estado',
+      action: 'Acción',
+      close: 'Cerrar',
+    },
+    account: {
+      title: 'Configuración de la cuenta',
+      accountTitle: 'Cuenta',
+      fullName: 'Nombre completo',
+      userId: 'ID de usuario',
+      currentEmail: 'Correo actual',
+      changeEmail: 'Cambiar correo',
+      changeEmailPlaceholder: 'nuevo-correo@ejemplo.com',
+      pendingEmailNotice: 'Se envió una verificación a {email}. Confirma la nueva dirección antes de activarla.',
+      currentPassword: 'Contraseña actual',
+      currentCredential: 'Contraseña actual o código',
+      currentCredentialPlaceholder: 'Contraseña o código de 4 dígitos',
+      newPassword: 'Nueva contraseña',
+      newPasswordPlaceholder: 'Al menos 8 caracteres',
+      newPasscode: 'Nuevo código de 4 dígitos',
+      newPasscodePlaceholder: '1234',
+      removeStoredPasscode: 'Eliminar código guardado',
+      mailingAddress: 'Dirección postal',
+      skills: 'Habilidades',
+      certifications: 'Certificaciones',
+      companyName: 'Nombre de la empresa',
+      contactName: 'Nombre del contacto',
+      noChanges: 'No se cambió ninguna configuración de la cuenta.',
+      currentCredentialRequired: 'Se requiere la contraseña actual o un código de 4 dígitos.',
+      fullNameRequired: 'El nombre completo debe tener al menos 2 caracteres.',
+      passwordMin: 'La nueva contraseña debe tener al menos 8 caracteres.',
+      passcodeInvalid: 'El código debe tener exactamente 4 dígitos.',
+      phoneInvalid: 'El número de teléfono debe tener exactamente 10 dígitos.',
+      addressRequired: 'Ingresa la dirección, ciudad, estado y código postal.',
+      stateInvalid: 'El estado debe tener 2 letras (por ejemplo, NV).',
+      zipInvalid: 'El código postal debe tener 5 dígitos o formato ZIP+4.',
+      companyNameRequired: 'El nombre de la empresa es obligatorio y no puede estar vacío.',
+      contactNameRequired: 'El nombre del contacto principal es obligatorio y no puede estar vacío.',
+      saved: 'La configuración de la cuenta se guardó.',
+      savedPasscode: 'La configuración de la cuenta se guardó. El código está activo.',
+      savedPendingEmail: 'La configuración se guardó. Revisa {email} para verificar tu nuevo correo.',
+      emailLabel: 'Correo electrónico',
+    },
+    notifications: {
+      title: 'Notificaciones',
+      employeeDescription: 'Activa las notificaciones del navegador para recibir alertas cuando un administrador apruebe o rechace tus documentos.',
+      employeeActiveDescription: 'Activa las notificaciones del navegador para recibir alertas cuando revisen tus documentos, lleguen mensajes y haya actualizaciones de turnos.',
+      clientDescription: 'Activa las notificaciones del navegador para recibir alertas cuando contratos, mensajes y actualizaciones de horas requieran tu atención.',
+      unavailable: 'Las notificaciones push no están disponibles en este navegador.',
+      blocked: 'Las notificaciones del navegador están bloqueadas para este sitio.',
+      enabled: 'Las notificaciones push están activadas para este dispositivo.',
+      enabledButton: 'Notificaciones push activadas',
+      employeeEnabled: 'Estado: Activo. Las notificaciones push están activadas para este dispositivo y las alertas de turnos están activas.',
+      pendingApproval: 'Pendiente de aprobación del administrador',
+      permissionDenied: 'No se concedió el permiso de notificaciones.',
+      subscriptionFailed: 'No se pudo guardar la suscripción de notificaciones push.',
+      deviceEnabled: 'Notificaciones push activadas para este dispositivo.',
+    },
+    messaging: {
+      title: 'Mensajes',
+      invalidRecipient: 'Selecciona un destinatario válido.',
+      messageRequired: 'El mensaje es obligatorio.',
+      sending: 'Enviando...',
+      sent: 'Mensaje enviado correctamente.',
+      deleted: 'El mensaje se eliminó de tu vista de conversación.',
+      deleteFailed: 'No se pudo eliminar este mensaje.',
+    },
+    employee: {
+      registeredRoles: 'Puestos registrados',
+      documents: 'Documentos',
+      profileComplete: 'Perfil completo',
+      acceptedShifts: 'Turnos aceptados',
+      myProfile: 'Mi perfil',
+      position: 'Puesto',
+      backgroundCheck: 'Verificación de antecedentes',
+      address: 'Dirección',
+      ssn: 'SSN',
+      ssnOnFile: 'En archivo (cifrado)',
+      ssnMissing: 'No enviado',
+      currentShifts: 'Turnos actuales',
+      pastShifts: 'Turnos anteriores',
+      openShifts: 'Turnos disponibles',
+      noCurrentAssignments: 'No hay turnos actuales.',
+      noPastAssignments: 'No hay turnos anteriores.',
+      noApplications: 'Aún no hay solicitudes enviadas.',
+      noDocuments: 'Aún no hay documentos cargados.',
+      waitingBackground: 'Esperando verificación de antecedentes cargada por administración',
+    },
+    jobsite: {
+      totalShifts: 'Turnos totales',
+      openShifts: 'Turnos abiertos',
+      closedShifts: 'Turnos cerrados',
+      companyProfile: 'Perfil de la empresa',
+      company: 'Empresa',
+      contact: 'Contacto',
+      industryTrack: 'Área',
+      yourShifts: 'Tus turnos',
+      postNewShift: 'Publicar un nuevo turno',
+      assignedWorkers: 'Trabajadores asignados',
+      noJobs: 'Aún no hay turnos publicados. Usa el formulario de la derecha para crear el primero.',
+      noAssignedWorkers: 'No hay trabajadores asignados a tus turnos.',
+    },
+  },
+  ar: {
+    header: {
+      language: 'اللغة',
+      logout: 'تسجيل الخروج',
+      switchToDarkMode: 'التبديل إلى الوضع الداكن',
+      switchToLightMode: 'التبديل إلى الوضع الفاتح',
+      employeeDashboard: 'لوحة الموظف',
+      clientDashboard: 'لوحة العميل',
+      employeeSubtitle: 'مرحباً بعودتك. هنا ملفك الشخصي وحالة الإعداد.',
+      clientSubtitle: 'أدر الوظائف المنشورة وملف شركتك.',
+      welcomeEmployee: 'مرحباً {name}',
+      welcomeClient: 'مرحباً {name}',
+    },
+    common: {
+      loading: 'جارٍ التحميل...',
+      loadingConversation: 'جارٍ تحميل المحادثة...',
+      notSet: 'غير محدد',
+      edit: 'تعديل',
+      cancel: 'إلغاء',
+      saveProfile: 'حفظ الملف الشخصي',
+      saveChanges: 'حفظ التغييرات',
+      saveAccountSettings: 'حفظ إعدادات الحساب',
+      clearRead: 'مسح المقروء',
+      enablePushNotifications: 'تفعيل الإشعارات الفورية',
+      notificationChannels: 'قنوات الإشعارات',
+      emailNotifications: 'إشعارات البريد الإلكتروني',
+      textNotifications: 'إشعارات الرسائل النصية',
+      appPushNotifications: 'إشعارات التطبيق',
+      recipient: 'المستلم',
+      message: 'الرسالة',
+      selectRecipient: 'اختر المستلم',
+      typeYourMessage: 'اكتب رسالتك',
+      sendMessage: 'إرسال الرسالة',
+      phone: 'الهاتف',
+      streetAddress: 'عنوان الشارع',
+      city: 'المدينة',
+      state: 'الولاية',
+      zipCode: 'الرمز البريدي',
+      when: 'الوقت',
+      type: 'النوع',
+      activity: 'النشاط',
+      status: 'الحالة',
+      action: 'الإجراء',
+      close: 'إغلاق',
+    },
+    account: {
+      title: 'إعدادات الحساب',
+      accountTitle: 'الحساب',
+      fullName: 'الاسم الكامل',
+      userId: 'معرّف المستخدم',
+      currentEmail: 'البريد الإلكتروني الحالي',
+      changeEmail: 'تغيير البريد الإلكتروني',
+      changeEmailPlaceholder: 'new-email@example.com',
+      pendingEmailNotice: 'تم إرسال التحقق إلى {email}. أكّد العنوان الجديد قبل تفعيله.',
+      currentPassword: 'كلمة المرور الحالية',
+      currentCredential: 'كلمة المرور الحالية أو رمز المرور',
+      currentCredentialPlaceholder: 'كلمة المرور أو رمز مرور من 4 أرقام',
+      newPassword: 'كلمة مرور جديدة',
+      newPasswordPlaceholder: '8 أحرف على الأقل',
+      newPasscode: 'رمز مرور جديد من 4 أرقام',
+      newPasscodePlaceholder: '1234',
+      removeStoredPasscode: 'إزالة رمز المرور المحفوظ',
+      mailingAddress: 'العنوان البريدي',
+      skills: 'المهارات',
+      certifications: 'الشهادات',
+      companyName: 'اسم الشركة',
+      contactName: 'اسم جهة الاتصال',
+      noChanges: 'لم يتم تغيير أي إعدادات للحساب.',
+      currentCredentialRequired: 'مطلوب كلمة المرور الحالية أو رمز مرور من 4 أرقام.',
+      fullNameRequired: 'يجب أن يتكون الاسم الكامل من حرفين على الأقل.',
+      passwordMin: 'يجب أن تتكون كلمة المرور الجديدة من 8 أحرف على الأقل.',
+      passcodeInvalid: 'يجب أن يتكون رمز المرور من 4 أرقام فقط.',
+      phoneInvalid: 'يجب أن يتكون رقم الهاتف من 10 أرقام.',
+      addressRequired: 'أدخل عنوان الشارع والمدينة والولاية والرمز البريدي.',
+      stateInvalid: 'يجب أن تكون الولاية مكوّنة من حرفين (مثل NV).',
+      zipInvalid: 'يجب أن يكون الرمز البريدي 5 أرقام أو بصيغة ZIP+4.',
+      companyNameRequired: 'اسم الشركة مطلوب ولا يمكن أن يكون فارغاً.',
+      contactNameRequired: 'اسم جهة الاتصال الرئيسية مطلوب ولا يمكن أن يكون فارغاً.',
+      saved: 'تم حفظ إعدادات الحساب.',
+      savedPasscode: 'تم حفظ إعدادات الحساب. رمز المرور مفعل.',
+      savedPendingEmail: 'تم حفظ الإعدادات. راجع {email} للتحقق من بريدك الإلكتروني الجديد.',
+      emailLabel: 'البريد الإلكتروني',
+    },
+    notifications: {
+      title: 'الإشعارات',
+      employeeDescription: 'فعّل إشعارات المتصفح لتلقي التنبيهات عندما يوافق المسؤول على مستنداتك أو يرفضها.',
+      employeeActiveDescription: 'فعّل إشعارات المتصفح لتلقي التنبيهات عند مراجعة مستنداتك أو وصول الرسائل أو تحديثات الورديات.',
+      clientDescription: 'فعّل إشعارات المتصفح لتلقي التنبيهات عندما تحتاج العقود أو الرسائل أو تحديثات الساعات إلى انتباهك.',
+      unavailable: 'الإشعارات الفورية غير متاحة في هذا المتصفح.',
+      blocked: 'إشعارات المتصفح محظورة لهذا الموقع.',
+      enabled: 'تم تفعيل الإشعارات الفورية لهذا الجهاز.',
+      enabledButton: 'تم تفعيل الإشعارات',
+      employeeEnabled: 'الحالة: مفعّل. تم تفعيل الإشعارات الفورية لهذا الجهاز وتنبيهات الورديات نشطة.',
+      pendingApproval: 'بانتظار موافقة المسؤول',
+      permissionDenied: 'لم يتم منح إذن الإشعارات.',
+      subscriptionFailed: 'تعذر حفظ اشتراك الإشعارات الفورية.',
+      deviceEnabled: 'تم تفعيل الإشعارات الفورية لهذا الجهاز.',
+    },
+    messaging: {
+      title: 'الرسائل',
+      invalidRecipient: 'اختر مستلماً صالحاً.',
+      messageRequired: 'نص الرسالة مطلوب.',
+      sending: 'جارٍ الإرسال...',
+      sent: 'تم إرسال الرسالة بنجاح.',
+      deleted: 'تم حذف الرسالة من عرض المحادثة الخاص بك.',
+      deleteFailed: 'تعذر حذف هذه الرسالة.',
+    },
+    employee: {
+      registeredRoles: 'الأدوار المسجلة',
+      documents: 'المستندات',
+      profileComplete: 'اكتمال الملف',
+      acceptedShifts: 'الورديات المقبولة',
+      myProfile: 'ملفي الشخصي',
+      position: 'المنصب',
+      backgroundCheck: 'فحص الخلفية',
+      address: 'العنوان',
+      ssn: 'رقم الضمان',
+      ssnOnFile: 'محفوظ (مشفّر)',
+      ssnMissing: 'غير مُرسل',
+      currentShifts: 'الورديات الحالية',
+      pastShifts: 'الورديات السابقة',
+      openShifts: 'الورديات المتاحة',
+      noCurrentAssignments: 'لا توجد ورديات حالية.',
+      noPastAssignments: 'لا توجد ورديات سابقة.',
+      noApplications: 'لا توجد طلبات مقدمة بعد.',
+      noDocuments: 'لا توجد مستندات مرفوعة بعد.',
+      waitingBackground: 'بانتظار فحص الخلفية المرفوع من الإدارة',
+    },
+    jobsite: {
+      totalShifts: 'إجمالي الورديات',
+      openShifts: 'الورديات المفتوحة',
+      closedShifts: 'الورديات المغلقة',
+      companyProfile: 'ملف الشركة',
+      company: 'الشركة',
+      contact: 'جهة الاتصال',
+      industryTrack: 'المجال',
+      yourShifts: 'وردياتك',
+      postNewShift: 'نشر وردية جديدة',
+      assignedWorkers: 'العمال المعيّنون',
+      noJobs: 'لا توجد ورديات منشورة بعد. استخدم النموذج على اليمين لإنشاء أول وردية.',
+      noAssignedWorkers: 'لا يوجد عمال معيّنون لوردياتك.',
+    },
+  },
+};
+
+const PORTAL_STATIC_TRANSLATION_BINDINGS = {
+  common: [
+    { selector: '#portalLanguageLabel', key: 'header.language' },
+    { selector: '#portalLogoutBtn', key: 'header.logout' },
+    { selector: '#portalNotificationEnableBtn', key: 'common.enablePushNotifications' },
+    { selector: '.notify-prefs-block__heading', key: 'common.notificationChannels' },
+    { selector: '.notify-toggle-row:nth-of-type(1) .notify-toggle__label', key: 'common.emailNotifications' },
+    { selector: '.notify-toggle-row:nth-of-type(2) .notify-toggle__label', key: 'common.textNotifications' },
+    { selector: '.notify-toggle-row:nth-of-type(3) .notify-toggle__label', key: 'common.appPushNotifications' },
+    { selector: '#portalNotificationsClearReadBtn', key: 'common.clearRead' },
+    { selector: 'label[for="portalMessageRecipient"]', key: 'common.recipient' },
+    { selector: 'label[for="portalMessageBody"]', key: 'common.message' },
+    { selector: '#portalMessageRecipient option[value=""]', key: 'common.selectRecipient' },
+    { selector: '#portalMessageBody', key: 'common.typeYourMessage', property: 'placeholder' },
+    { selector: '#portalMessageForm button[type="submit"]', key: 'common.sendMessage' },
+    { selector: '#portalMessagesList .portal-chat__empty', key: 'common.loadingConversation' },
+  ],
+  employee: [
+    { selector: '.logo__text', key: 'header.employeeDashboard' },
+    { selector: '#portalSubtitle', key: 'header.employeeSubtitle' },
+    { selector: '#employeeStatRow .stat-card:nth-child(1) .stat-card__label', key: 'employee.registeredRoles' },
+    { selector: '#employeeStatRow .stat-card:nth-child(2) .stat-card__label', key: 'employee.documents' },
+    { selector: '#employeeStatRow .stat-card:nth-child(3) .stat-card__label', key: 'employee.profileComplete' },
+    { selector: '#employeeStatRow .stat-card:nth-child(4) .stat-card__label', key: 'employee.acceptedShifts' },
+    { selector: '#employeeProfileEditBtn', key: 'common.edit' },
+    { selector: '#employeeProfileEditForm button[type="submit"]', key: 'common.saveProfile' },
+    { selector: '#employeeProfileEditCancel', key: 'common.cancel' },
+    { selector: '#portalAccountSectionTitle', key: 'account.title' },
+    { selector: 'label[for="portalAccountName"]', key: 'account.fullName' },
+    { selector: 'label[for="portalAccountUserId"]', key: 'account.userId' },
+    { selector: 'label[for="portalAccountEmail"]', key: 'account.currentEmail' },
+    { selector: 'label[for="portalNewEmail"]', key: 'account.changeEmail' },
+    { selector: '#portalNewEmail', key: 'account.changeEmailPlaceholder', property: 'placeholder' },
+    { selector: 'label[for="portalCurrentCredential"]', key: 'account.currentCredential' },
+    { selector: '#portalCurrentCredential', key: 'account.currentCredentialPlaceholder', property: 'placeholder' },
+    { selector: 'label[for="portalNewPassword"]', key: 'account.newPassword' },
+    { selector: '#portalNewPassword', key: 'account.newPasswordPlaceholder', property: 'placeholder' },
+    { selector: 'label[for="portalNewPasscode"]', key: 'account.newPasscode' },
+    { selector: '#portalNewPasscode', key: 'account.newPasscodePlaceholder', property: 'placeholder' },
+    { selector: 'label[for="portalAccountPhone"]', key: 'common.phone' },
+    { selector: 'label[for="portalAccountAddress"]', key: 'common.streetAddress' },
+    { selector: 'label[for="portalAccountCity"]', key: 'common.city' },
+    { selector: 'label[for="portalAccountState"]', key: 'common.state' },
+    { selector: 'label[for="portalAccountZip"]', key: 'common.zipCode' },
+    { selector: 'label[for="portalAccountSkills"]', key: 'account.skills' },
+    { selector: 'label[for="portalAccountCertifications"]', key: 'account.certifications' },
+    { selector: 'label[for="portalRemovePasscode"]', key: 'account.removeStoredPasscode' },
+    { selector: '#portalAccountForm button[type="submit"]', key: 'common.saveAccountSettings' },
+  ],
+  jobsite: [
+    { selector: '.logo__text', key: 'header.clientDashboard' },
+    { selector: '#portalSubtitle', key: 'header.clientSubtitle' },
+    { selector: '.stat-row .stat-card:nth-child(1) .stat-card__label', key: 'jobsite.totalShifts' },
+    { selector: '.stat-row .stat-card:nth-child(2) .stat-card__label', key: 'jobsite.openShifts' },
+    { selector: '.stat-row .stat-card:nth-child(3) .stat-card__label', key: 'jobsite.closedShifts' },
+    { selector: '#jobsiteProfileEditBtn', key: 'common.edit' },
+    { selector: '#jobsiteProfileEditForm button[type="submit"]', key: 'common.saveProfile' },
+    { selector: '#jobsiteProfileEditCancel', key: 'common.cancel' },
+    { selector: '#portalAccountSectionTitle', key: 'account.accountTitle' },
+    { selector: 'label[for="portalAccountName"]', key: 'account.fullName' },
+    { selector: 'label[for="portalAccountUserId"]', key: 'account.userId' },
+    { selector: 'label[for="portalAccountEmail"]', key: 'account.currentEmail' },
+    { selector: 'label[for="portalNewEmail"]', key: 'account.changeEmail' },
+    { selector: '#portalNewEmail', key: 'account.changeEmailPlaceholder', property: 'placeholder' },
+    { selector: 'label[for="portalCurrentCredential"]', key: 'account.currentCredential' },
+    { selector: '#portalCurrentCredential', key: 'account.currentCredentialPlaceholder', property: 'placeholder' },
+    { selector: 'label[for="portalNewPassword"]', key: 'account.newPassword' },
+    { selector: '#portalNewPassword', key: 'account.newPasswordPlaceholder', property: 'placeholder' },
+    { selector: 'label[for="portalNewPasscode"]', key: 'account.newPasscode' },
+    { selector: '#portalNewPasscode', key: 'account.newPasscodePlaceholder', property: 'placeholder' },
+    { selector: 'label[for="portalAccountCompanyName"]', key: 'account.companyName' },
+    { selector: 'label[for="portalAccountContactName"]', key: 'account.contactName' },
+    { selector: 'label[for="portalAccountPhone"]', key: 'common.phone' },
+    { selector: 'label[for="portalAccountAddress"]', key: 'common.streetAddress' },
+    { selector: 'label[for="portalAccountCity"]', key: 'common.city' },
+    { selector: 'label[for="portalAccountState"]', key: 'common.state' },
+    { selector: 'label[for="portalAccountZip"]', key: 'common.zipCode' },
+    { selector: 'label[for="portalRemovePasscode"]', key: 'account.removeStoredPasscode' },
+    { selector: '#portalAccountForm button[type="submit"]', key: 'common.saveAccountSettings' },
+  ],
+};
+
+let portalLanguage = PORTAL_DEFAULT_LANGUAGE;
+
+function getStoredPortalLanguage() {
+  try {
+    const stored = localStorage.getItem(PORTAL_LANGUAGE_KEY);
+    return PORTAL_LANGUAGE_LABELS[stored] ? stored : PORTAL_DEFAULT_LANGUAGE;
+  } catch (_error) {
+    return PORTAL_DEFAULT_LANGUAGE;
+  }
+}
+
+function translateTemplate(template, vars = {}) {
+  return String(template || '').replace(/\{(\w+)\}/g, (_match, key) => (vars[key] === undefined ? '' : String(vars[key])));
+}
+
+function getTranslationValue(key, vars = {}) {
+  const keys = String(key || '').split('.').filter(Boolean);
+  const languages = [portalLanguage, PORTAL_DEFAULT_LANGUAGE];
+
+  for (const language of languages) {
+    let value = PORTAL_TRANSLATIONS[language];
+    for (const part of keys) {
+      value = value && typeof value === 'object' ? value[part] : undefined;
+    }
+    if (typeof value === 'string') {
+      return translateTemplate(value, vars);
+    }
+  }
+
+  return key;
+}
+
+function t(key, vars = {}) {
+  return getTranslationValue(key, vars);
+}
+
+function setPortalDocumentLanguage(language) {
+  const normalized = PORTAL_LANGUAGE_LABELS[language] ? language : PORTAL_DEFAULT_LANGUAGE;
+  portalLanguage = normalized;
+  if (document && document.documentElement) {
+    document.documentElement.lang = normalized === 'en' ? 'en-GB' : normalized;
+    document.documentElement.dir = PORTAL_RTL_LANGUAGES.has(normalized) ? 'rtl' : 'ltr';
+  }
+  if (document && document.body) {
+    document.body.classList.toggle('portal-page--rtl', PORTAL_RTL_LANGUAGES.has(normalized));
+    document.body.dataset.language = normalized;
+  }
+  try {
+    localStorage.setItem(PORTAL_LANGUAGE_KEY, normalized);
+  } catch (_error) {
+    // Ignore storage failures.
+  }
+}
+
+function applyPortalStaticTranslations() {
+  const pageType = String(document.body?.dataset?.portalPage || '').trim().toLowerCase();
+  const bindings = [
+    ...(PORTAL_STATIC_TRANSLATION_BINDINGS.common || []),
+    ...(PORTAL_STATIC_TRANSLATION_BINDINGS[pageType] || []),
+  ];
+
+  bindings.forEach((binding) => {
+    const element = document.querySelector(binding.selector);
+    if (!element) return;
+    const property = binding.property || 'textContent';
+    element[property] = t(binding.key, binding.vars || {});
+  });
+
+  const selector = document.getElementById('portalLanguageSelect');
+  if (selector) {
+    selector.value = portalLanguage;
+    Array.from(selector.options).forEach((option) => {
+      const label = PORTAL_LANGUAGE_LABELS[option.value];
+      if (label) option.textContent = label;
+    });
+  }
+}
+
 if (document && document.documentElement) {
-  document.documentElement.lang = 'en-GB';
+  setPortalDocumentLanguage(getStoredPortalLanguage());
 }
 
 function setMessage(element, text, type) {
@@ -97,9 +698,11 @@ function setPortalTheme(theme) {
 
   const btn = document.getElementById('portalThemeToggleBtn');
   if (btn) {
-    btn.textContent = darkEnabled ? 'Switch to Light Mode' : 'Switch to Dark Mode';
+    btn.textContent = darkEnabled ? t('header.switchToLightMode') : t('header.switchToDarkMode');
     btn.classList.toggle('button--secondary', darkEnabled);
   }
+
+  applyPortalStaticTranslations();
 }
 
 function bindPortalThemeToggle() {
@@ -480,6 +1083,7 @@ let EXPIRATION_REQUIRED_TYPES = new Set([
 let portalCurrentUserId = null;
 let portalCurrentUser = null;
 let employeeDashboardPayload = null;
+let jobsiteDashboardPayload = null;
 let employeeOnboardingStatus = 'registered';
 let employeeCompliance = null;
 let employeeUnsubmittedClockEntries = [];
@@ -1515,6 +2119,8 @@ function populateAccountIdentityFields(user, options = {}) {
   const userIdFieldId = options.userIdFieldId || 'portalAccountUserId';
   const emailFieldId = options.emailFieldId || 'portalAccountEmail';
   const passwordStatusFieldId = options.passwordStatusFieldId || 'portalAccountPasswordStatus';
+  const pendingEmailNoticeId = options.pendingEmailNoticeId || 'portalAccountPendingEmailNotice';
+  const profile = options.profile || {};
 
   const nameField = document.getElementById(nameFieldId);
   if (nameField) {
@@ -1532,10 +2138,49 @@ function populateAccountIdentityFields(user, options = {}) {
     emailField.value = String(user && user.email ? user.email : '').trim();
   }
 
+  const pendingEmailNotice = document.getElementById(pendingEmailNoticeId);
+  if (pendingEmailNotice) {
+    const pendingEmail = String(user && user.pendingEmail ? user.pendingEmail : '').trim();
+    if (pendingEmail) {
+      pendingEmailNotice.hidden = false;
+      pendingEmailNotice.textContent = t('account.pendingEmailNotice', { email: pendingEmail });
+    } else {
+      pendingEmailNotice.hidden = true;
+      pendingEmailNotice.textContent = '';
+    }
+  }
+
   const passwordStatusField = document.getElementById(passwordStatusFieldId);
   if (passwordStatusField) {
     passwordStatusField.value = 'Hidden for security';
   }
+
+  const accountPhone = document.getElementById(options.phoneFieldId || 'portalAccountPhone');
+  if (accountPhone) accountPhone.value = formatPhoneForView(profile.phone || '', '');
+
+  const accountAddress = document.getElementById(options.addressFieldId || 'portalAccountAddress');
+  if (accountAddress) accountAddress.value = String(profile.address || '').trim();
+
+  const accountCity = document.getElementById(options.cityFieldId || 'portalAccountCity');
+  if (accountCity) accountCity.value = String(profile.city || '').trim();
+
+  const accountState = document.getElementById(options.stateFieldId || 'portalAccountState');
+  if (accountState) accountState.value = String(profile.state || '').trim();
+
+  const accountZip = document.getElementById(options.zipFieldId || 'portalAccountZip');
+  if (accountZip) accountZip.value = String(profile.zip || '').trim();
+
+  const accountSkills = document.getElementById(options.skillsFieldId || 'portalAccountSkills');
+  if (accountSkills) accountSkills.value = String(profile.skills || '').trim();
+
+  const accountCertifications = document.getElementById(options.certificationsFieldId || 'portalAccountCertifications');
+  if (accountCertifications) accountCertifications.value = String(profile.certifications || '').trim();
+
+  const accountCompanyName = document.getElementById(options.companyNameFieldId || 'portalAccountCompanyName');
+  if (accountCompanyName) accountCompanyName.value = String(profile.companyName || '').trim();
+
+  const accountContactName = document.getElementById(options.contactNameFieldId || 'portalAccountContactName');
+  if (accountContactName) accountContactName.value = String(profile.contactName || '').trim();
 
   const notifyEmailField = document.getElementById(options.notifyEmailFieldId || 'portalNotifyEmailEnabled');
   const notifySmsField = document.getElementById(options.notifySmsFieldId || 'portalNotifySmsEnabled');
@@ -1566,6 +2211,11 @@ function populateAccountIdentityFields(user, options = {}) {
     }
   }
 
+  const languageField = document.getElementById('portalLanguageSelect');
+  if (languageField) {
+    languageField.value = String(user && user.preferredLanguage ? user.preferredLanguage : portalLanguage || PORTAL_DEFAULT_LANGUAGE);
+  }
+
   bindNotificationPreferenceAutoSave();
 }
 
@@ -1594,6 +2244,32 @@ function bindNotificationPreferenceAutoSave() {
         });
       } catch (_) {}
     });
+  });
+}
+
+function bindPortalLanguageSelector() {
+  const selector = document.getElementById('portalLanguageSelect');
+  if (!selector || selector.dataset.bound === '1') return;
+
+  selector.dataset.bound = '1';
+  selector.value = portalLanguage;
+
+  selector.addEventListener('change', async () => {
+    const nextLanguage = PORTAL_LANGUAGE_LABELS[selector.value] ? selector.value : PORTAL_DEFAULT_LANGUAGE;
+    setPortalDocumentLanguage(nextLanguage);
+    applyPortalStaticTranslations();
+
+    try {
+      await apiFetch('/api/account/preferences', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ preferredLanguage: nextLanguage }),
+      });
+    } catch (_error) {
+      // Keep the local choice for the current session even if persistence fails.
+    }
+
+    window.location.reload();
   });
 }
 
@@ -4121,17 +4797,17 @@ async function bindNotificationControls() {
     if (pageType === 'admin') {
       descriptionEl.textContent = 'Enable browser notifications to receive live alerts for contracts, employee documents, messages, and other admin tasks.';
     } else if (pageType === 'jobsite') {
-      descriptionEl.textContent = 'Enable browser notifications to receive live alerts when contracts, messages, or timesheet actions need your attention.';
+      descriptionEl.textContent = t('notifications.clientDescription');
     } else if (pageType === 'employee' && employeeOnboardingStatus !== 'active') {
       descriptionEl.textContent = getEmployeeOnboardingBlockMessage(employeeCompliance, 'enable shift notifications');
     } else {
-      descriptionEl.textContent = 'Enable browser notifications to receive live alerts when your documents are reviewed, messages arrive, and shift updates are available.';
+      descriptionEl.textContent = t('notifications.employeeActiveDescription');
     }
   }
 
   const registration = await registerPortalServiceWorker();
   if (!registration) {
-    setMessage(status, 'Push notifications are not available in this browser.', 'error');
+    setMessage(status, t('notifications.unavailable'), 'error');
     if (button) button.disabled = true;
     return;
   }
@@ -4141,14 +4817,14 @@ async function bindNotificationControls() {
       setMessage(status, `Status: Registered. ${getEmployeeOnboardingBlockMessage(employeeCompliance, 'enable shift notifications')}`, 'neutral');
       if (button) {
         button.disabled = true;
-        button.textContent = 'Pending Admin Approval';
+        button.textContent = t('notifications.pendingApproval');
       }
       return;
     }
 
     const permission = Notification.permission;
     if (permission === 'denied') {
-      setMessage(status, 'Browser notifications are blocked for this site.', 'error');
+      setMessage(status, t('notifications.blocked'), 'error');
       if (button) button.disabled = true;
       return;
     }
@@ -4156,12 +4832,12 @@ async function bindNotificationControls() {
     const existing = await registration.pushManager.getSubscription();
     if (existing) {
       if (pageType === 'employee' && employeeOnboardingStatus === 'active') {
-        setMessage(status, 'Status: Active. Push notifications are enabled for this device and shift alerts are active.', 'success');
+        setMessage(status, t('notifications.employeeEnabled'), 'success');
       } else {
-        setMessage(status, 'Push notifications are enabled for this device.', 'success');
+        setMessage(status, t('notifications.enabled'), 'success');
       }
       if (button) {
-        button.textContent = 'Push Notifications Enabled';
+        button.textContent = t('notifications.enabledButton');
         button.disabled = true;
       }
       return;
@@ -4170,7 +4846,7 @@ async function bindNotificationControls() {
     hideMessage(status);
     if (button) {
       button.disabled = false;
-      button.textContent = 'Enable Push Notifications';
+      button.textContent = t('common.enablePushNotifications');
     }
   }
 
@@ -4182,7 +4858,7 @@ async function bindNotificationControls() {
     hideMessage(status);
     const permission = await Notification.requestPermission();
     if (permission !== 'granted') {
-      setMessage(status, 'Notification permission was not granted.', 'error');
+      setMessage(status, t('notifications.permissionDenied'), 'error');
       return;
     }
 
@@ -4206,12 +4882,12 @@ async function bindNotificationControls() {
 
     const payload = await res.json().catch(() => ({}));
     if (!res.ok) {
-      setMessage(status, payload.error || 'Failed to save push notification subscription.', 'error');
+      setMessage(status, payload.error || t('notifications.subscriptionFailed'), 'error');
       return;
     }
 
-    setMessage(status, 'Push notifications enabled for this device.', 'success');
-    button.textContent = 'Push Notifications Enabled';
+    setMessage(status, t('notifications.deviceEnabled'), 'success');
+    button.textContent = t('notifications.enabledButton');
     button.disabled = true;
   });
 }
@@ -4232,12 +4908,12 @@ async function handlePortalMessageSubmit(event) {
   const body = form.body.value.trim();
 
   if (!sendToAllEmployees && !sendToAllClients && (!Number.isInteger(recipientUserId) || recipientUserId < 1)) {
-    setMessage(status, 'Select a valid recipient.', 'error');
+    setMessage(status, t('messaging.invalidRecipient'), 'error');
     return;
   }
 
   if (!body) {
-    setMessage(status, 'Message body is required.', 'error');
+    setMessage(status, t('messaging.messageRequired'), 'error');
     return;
   }
 
@@ -4250,7 +4926,7 @@ async function handlePortalMessageSubmit(event) {
   form.dataset.sending = '1';
   if (submitBtn) {
     submitBtn.disabled = true;
-    submitBtn.textContent = 'Sending...';
+    submitBtn.textContent = t('messaging.sending');
   }
 
   try {
@@ -4270,7 +4946,7 @@ async function handlePortalMessageSubmit(event) {
       ? `Message sent to ${payload.sentCount || 0} employees.`
       : sendToAllClients
         ? `Message sent to ${payload.sentCount || 0} clients.`
-        : 'Message sent successfully.';
+        : t('messaging.sent');
     const finalSuccessText = payload.redacted
       ? `${successText} Some wording was filtered for safety.`
       : successText;
@@ -4329,11 +5005,11 @@ function bindPortalMessaging() {
       const res = await apiFetch(`/api/messages/${messageId}`, { method: 'DELETE' });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setMessage(status, payload.error || 'Unable to delete this message.', 'error');
+        setMessage(status, payload.error || t('messaging.deleteFailed'), 'error');
         return;
       }
 
-      setMessage(status, 'Message deleted from your conversation view.', 'success');
+      setMessage(status, t('messaging.deleted'), 'success');
       await loadPortalMessages();
     });
   }
@@ -4348,7 +5024,16 @@ async function handlePortalAccountSubmit(event, endpoint = '/api/account') {
   hideMessage(msg);
 
   const payload = {
-      phone: form.phone ? phoneDigits(form.phone.value) : '',
+    name: form.name ? String(form.name.value || '').trim() : undefined,
+    phone: form.phone ? String(form.phone.value || '').trim() : undefined,
+    address: form.address ? String(form.address.value || '').trim() : undefined,
+    city: form.city ? String(form.city.value || '').trim() : undefined,
+    state: form.state ? String(form.state.value || '').trim().toUpperCase() : undefined,
+    zip: form.zip ? String(form.zip.value || '').trim() : undefined,
+    skills: form.skills ? String(form.skills.value || '').trim() : undefined,
+    certifications: form.certifications ? String(form.certifications.value || '').trim() : undefined,
+    companyName: form.companyName ? String(form.companyName.value || '').trim() : undefined,
+    contactName: form.contactName ? String(form.contactName.value || '').trim() : undefined,
     currentCredential: form.currentCredential.value,
     newEmail: form.newEmail ? form.newEmail.value.trim() : '',
     newPassword: form.newPassword ? form.newPassword.value : '',
@@ -4363,23 +5048,77 @@ async function handlePortalAccountSubmit(event, endpoint = '/api/account') {
   );
 
   if (!payload.currentCredential) {
-    setMessage(msg, 'Current password or 4-digit passcode is required.', 'error');
+    setMessage(msg, t('account.currentCredentialRequired'), 'error');
     return;
   }
 
-  if (!payload.newEmail && !payload.newPassword && !payload.newPasscode && !payload.removePasscode && !sensitiveToggleChanged) {
-    setMessage(msg, 'No account settings were changed.', 'error');
+  const hasProfileChange = [
+    payload.name,
+    payload.phone,
+    payload.address,
+    payload.city,
+    payload.state,
+    payload.zip,
+    payload.skills,
+    payload.certifications,
+    payload.companyName,
+    payload.contactName,
+  ].some((value) => value !== undefined && value !== '');
+
+  if (!payload.newEmail && !payload.newPassword && !payload.newPasscode && !payload.removePasscode && !sensitiveToggleChanged && !hasProfileChange) {
+    setMessage(msg, t('account.noChanges'), 'error');
+    return;
+  }
+
+  if (payload.name !== undefined && payload.name && payload.name.length < 2) {
+    setMessage(msg, t('account.fullNameRequired'), 'error');
     return;
   }
 
   if (payload.newPassword && payload.newPassword.length < 8) {
-    setMessage(msg, 'New password must be at least 8 characters.', 'error');
+    setMessage(msg, t('account.passwordMin'), 'error');
     return;
   }
 
   if (payload.newPasscode && !/^\d{4}$/.test(payload.newPasscode)) {
-    setMessage(msg, 'Passcode must be exactly 4 digits.', 'error');
+    setMessage(msg, t('account.passcodeInvalid'), 'error');
     return;
+  }
+
+  const normalizedPhone = payload.phone !== undefined ? phoneDigits(payload.phone) : '';
+  if (payload.phone && normalizedPhone.length !== 10) {
+    setMessage(msg, t('account.phoneInvalid'), 'error');
+    return;
+  }
+
+  const hasAddressData = Boolean(payload.address || payload.city || payload.state || payload.zip);
+  if (hasAddressData && (!payload.address || !payload.city || !payload.state || !payload.zip)) {
+    setMessage(msg, t('account.addressRequired'), 'error');
+    return;
+  }
+
+  if (payload.state && !/^[A-Z]{2}$/.test(payload.state)) {
+    setMessage(msg, t('account.stateInvalid'), 'error');
+    return;
+  }
+
+  if (payload.zip && !/^\d{5}(?:-\d{4})?$/.test(payload.zip)) {
+    setMessage(msg, t('account.zipInvalid'), 'error');
+    return;
+  }
+
+  if (form.companyName && !payload.companyName) {
+    setMessage(msg, t('account.companyNameRequired'), 'error');
+    return;
+  }
+
+  if (form.contactName && !payload.contactName) {
+    setMessage(msg, t('account.contactNameRequired'), 'error');
+    return;
+  }
+
+  if (payload.phone !== undefined) {
+    payload.phone = normalizedPhone;
   }
 
   const res = await apiFetch(endpoint, {
@@ -4394,9 +5133,21 @@ async function handlePortalAccountSubmit(event, endpoint = '/api/account') {
     return;
   }
 
-  setMessage(msg, response.passcodeEnabled ? 'Account settings saved. Passcode is active.' : 'Account settings saved.', 'success');
+  const successText = response && response.emailChangePending && response.pendingEmail
+    ? t('account.savedPendingEmail', { email: response.pendingEmail })
+    : response.passcodeEnabled
+      ? t('account.savedPasscode')
+      : t('account.saved');
+  setMessage(msg, successText, 'success');
 
   if (!portalCurrentUser) portalCurrentUser = {};
+  if (response && response.name) portalCurrentUser.name = response.name;
+  if (response && response.email) portalCurrentUser.email = response.email;
+  portalCurrentUser.pendingEmail = response && response.pendingEmail ? response.pendingEmail : null;
+  if (response && response.preferredLanguage) {
+    portalCurrentUser.preferredLanguage = response.preferredLanguage;
+    setPortalDocumentLanguage(response.preferredLanguage);
+  }
   if (!portalCurrentUser.securityPreferences) portalCurrentUser.securityPreferences = {};
   const nextSensitive = response
     && response.securityPreferences
@@ -4407,11 +5158,34 @@ async function handlePortalAccountSubmit(event, endpoint = '/api/account') {
     form.requireBiometricSensitive.dataset.initialValue = nextSensitive ? '1' : '0';
   }
 
+  const profileForPopulate = response && response.profile
+    ? response.profile
+    : {
+        phone: form.phone ? phoneDigits(form.phone.value) : undefined,
+        address: form.address ? form.address.value : undefined,
+        city: form.city ? form.city.value : undefined,
+        state: form.state ? form.state.value : undefined,
+        zip: form.zip ? form.zip.value : undefined,
+        skills: form.skills ? form.skills.value : undefined,
+        certifications: form.certifications ? form.certifications.value : undefined,
+        companyName: form.companyName ? form.companyName.value : undefined,
+        contactName: form.contactName ? form.contactName.value : undefined,
+      };
+  populateAccountIdentityFields(portalCurrentUser, { profile: profileForPopulate });
+  applyPortalStaticTranslations();
   await refreshPasskeyStatus(form).catch(() => {});
   form.currentCredential.value = '';
   if (form.newPassword) form.newPassword.value = '';
   if (form.newPasscode) form.newPasscode.value = '';
   if (form.removePasscode) form.removePasscode.checked = false;
+
+  const pageType = String(document.body?.dataset?.portalPage || '').trim().toLowerCase();
+  if (pageType === 'employee' && portalCurrentUser) {
+    await loadEmployeeDashboard(portalCurrentUser);
+  }
+  if (pageType === 'jobsite' && portalCurrentUser) {
+    await loadJobsiteDashboard(portalCurrentUser);
+  }
 }
 
 function bindPortalAccountForm(formId = 'portalAccountForm', endpoint = '/api/account') {
@@ -4562,6 +5336,10 @@ async function loadCurrentUser(options = {}) {
     if (!res.ok) return null;
     const payload = await res.json();
     portalSmtpConfigured = payload && payload.emailConfigured !== false && payload.smtpConfigured !== false;
+    if (payload && payload.user && payload.user.preferredLanguage) {
+      setPortalDocumentLanguage(payload.user.preferredLanguage);
+      applyPortalStaticTranslations();
+    }
     return payload.user;
   } catch (_error) {
     portalSmtpConfigured = true;
@@ -4821,7 +5599,7 @@ function renderEmployeeDashboard(data) {
   const greeting = document.getElementById('portalGreeting');
   if (greeting) {
     const employeeName = String(data.user?.name || 'Employee').trim();
-    greeting.textContent = `Welcome ${employeeName}`;
+    greeting.textContent = t('header.welcomeEmployee', { name: employeeName });
   }
   
   const industry = document.getElementById('portalIndustry');
@@ -4829,7 +5607,8 @@ function renderEmployeeDashboard(data) {
     renderEmployeeHeaderInto(industry, data);
   }
 
-  populateAccountIdentityFields(data.user);
+  populateAccountIdentityFields(data.user, { profile: data.profile || {} });
+  applyPortalStaticTranslations();
 
   // Stat cards
   employeeOnboardingStatus = String(data.onboardingStatus || ((data.compliance && data.compliance.isComplete) ? 'active' : 'registered')).toLowerCase();
@@ -4854,14 +5633,15 @@ function renderEmployeeDashboard(data) {
       : '<span class="badge badge--gray">Waiting for admin-uploaded background</span>';
     profile.innerHTML = `
       ${renderEmployeeHeaderComponent(data, { surface: true })}
-      <div class="profile-info__item"><span class="profile-info__label">Email</span><span>${escapeHtml(data.user.email)}</span></div>
-      <div class="profile-info__item"><span class="profile-info__label">Position</span><span>${escapeHtml(headerData.positionTitle || 'Not set')}</span></div>
-      <div class="profile-info__item"><span class="profile-info__label">Background Check</span><span>${bgDisplay}${data.hasAdminBackgroundDocument ? `<span style="display:block;margin-top:0.3rem;color:var(--color-muted);font-size:0.82rem;">Status: ${escapeHtml(backgroundStatusText)}</span>` : ''}</span></div>
-      <div class="profile-info__item"><span class="profile-info__label">Phone</span><span>${escapeHtml(formatPhoneForView(data.profile.phone))}</span></div>
-      <div class="profile-info__item"><span class="profile-info__label">Address</span><span>${escapeHtml([data.profile.address, data.profile.city, data.profile.state, data.profile.zip].filter(Boolean).join(', ') || 'Not set')}</span></div>
-      <div class="profile-info__item"><span class="profile-info__label">Skills</span><span>${escapeHtml(data.profile.skills || 'Not set')}</span></div>
-      <div class="profile-info__item"><span class="profile-info__label">Certifications</span><span>${escapeHtml(data.profile.certifications || 'Not set')}</span></div>
-      <div class="profile-info__item"><span class="profile-info__label">SSN</span><span>${data.ssnOnFile ? '<span class="badge badge--green">On File (Encrypted)</span>' : '<span class="badge badge--yellow">Not Submitted</span>'}</span></div>
+      <div class="profile-info__item"><span class="profile-info__label">${escapeHtml(t('account.fullName'))}</span><span>${escapeHtml(data.user.name || t('common.notSet'))}</span></div>
+      <div class="profile-info__item"><span class="profile-info__label">${escapeHtml(t('account.emailLabel'))}</span><span>${escapeHtml(data.user.email)}</span></div>
+      <div class="profile-info__item"><span class="profile-info__label">${escapeHtml(t('employee.position'))}</span><span>${escapeHtml(headerData.positionTitle || t('common.notSet'))}</span></div>
+      <div class="profile-info__item"><span class="profile-info__label">${escapeHtml(t('employee.backgroundCheck'))}</span><span>${bgDisplay}${data.hasAdminBackgroundDocument ? `<span style="display:block;margin-top:0.3rem;color:var(--color-muted);font-size:0.82rem;">${escapeHtml(t('common.status'))}: ${escapeHtml(backgroundStatusText)}</span>` : ''}</span></div>
+      <div class="profile-info__item"><span class="profile-info__label">${escapeHtml(t('common.phone'))}</span><span>${escapeHtml(formatPhoneForView(data.profile.phone, t('common.notSet')))}</span></div>
+      <div class="profile-info__item"><span class="profile-info__label">${escapeHtml(t('employee.address'))}</span><span>${escapeHtml([data.profile.address, data.profile.city, data.profile.state, data.profile.zip].filter(Boolean).join(', ') || t('common.notSet'))}</span></div>
+      <div class="profile-info__item"><span class="profile-info__label">${escapeHtml(t('account.skills'))}</span><span>${escapeHtml(data.profile.skills || t('common.notSet'))}</span></div>
+      <div class="profile-info__item"><span class="profile-info__label">${escapeHtml(t('account.certifications'))}</span><span>${escapeHtml(data.profile.certifications || t('common.notSet'))}</span></div>
+      <div class="profile-info__item"><span class="profile-info__label">${escapeHtml(t('employee.ssn'))}</span><span>${data.ssnOnFile ? `<span class="badge badge--green">${escapeHtml(t('employee.ssnOnFile'))}</span>` : `<span class="badge badge--yellow">${escapeHtml(t('employee.ssnMissing'))}</span>`}</span></div>
     `;
     profile.dataset.phone = String(data.profile.phone || '');
     profile.dataset.address = String(data.profile.address || '');
@@ -4913,7 +5693,7 @@ function renderEmployeeDashboard(data) {
           ${employeeOnboardingStatus === 'active' ? '' : `<div class="assignment-card__meta">${escapeHtml(getEmployeeOnboardingBlockMessage(employeeCompliance, 'manage assigned shifts'))}</div>`}
         </div>
       `).join('')
-      : '<p class="empty-state">No current assignments.</p>';
+      : `<p class="empty-state">${escapeHtml(t('employee.noCurrentAssignments'))}</p>`;
   }
 
   // Past assignments
@@ -4922,7 +5702,7 @@ function renderEmployeeDashboard(data) {
     const list = data.pastAssignments || [];
     past.innerHTML = list.length
         ? list.map(a => `<div class="assignment-card assignment-card--faded"><div class="assignment-card__title">${escapeHtml(a.title)}</div><div class="assignment-card__meta">${escapeHtml(a.companyName || 'Unassigned jobsite')} &bull; ${statusBadge(a.status)}</div>${a.statPayEnabled ? `<div class="assignment-card__meta">${statPayApprovalMarkup(a)}</div>` : ''}${a.clientAddress ? `<div class="assignment-card__meta">${escapeHtml(a.clientAddress)}</div>` : ''}${a.statusReason ? `<div class="assignment-card__meta">Reason: ${escapeHtml(a.statusReason)}</div>` : ''}</div>`).join('')
-      : '<p class="empty-state">No past assignments.</p>';
+      : `<p class="empty-state">${escapeHtml(t('employee.noPastAssignments'))}</p>`;
   }
 
   // Applications table
@@ -4935,7 +5715,7 @@ function renderEmployeeDashboard(data) {
       return `<tr><td>${escapeHtml(item.id)}</td><td>${escapeHtml(item.position || '—')}</td><td>${escapeHtml(industryDisplay)}</td><td>${escapeHtml(item.createdAt ? formatDateOnly(item.createdAt) : '—')}</td><td>${cert}</td><td>${withdrawAction}</td></tr>`;
     }),
     6,
-    'No applications submitted yet.'
+    t('employee.noApplications')
   );
 
   // Document checklist
@@ -5022,7 +5802,7 @@ function renderEmployeeDashboard(data) {
       return `<tr><td>${escapeHtml(DOCUMENT_TYPE_LABELS[item.documentType] || item.documentType)}</td><td>${escapeHtml(item.originalName)}</td><td>${escapeHtml(item.createdAt ? formatDateOnly(item.createdAt) : '\u2014')}</td><td>${escapeHtml(item.expirationDate ? formatDateOnly(item.expirationDate) : '\u2014')}</td><td>${statusBdg}</td></tr>`;
     }),
     5,
-    'No documents uploaded yet.'
+    t('employee.noDocuments')
   );
 
   // W-4 form pre-fill
@@ -5096,10 +5876,11 @@ function renderEmployeeNcnsAssignments(items) {
 }
 
 function renderJobsiteDashboard(data) {
+  jobsiteDashboardPayload = data;
   const greeting = document.getElementById('portalGreeting');
   if (greeting) {
     const companyName = String(data.profile?.companyName || data.user?.name || 'Client').trim();
-    greeting.textContent = `Welcome ${companyName}`;
+    greeting.textContent = t('header.welcomeClient', { name: companyName });
   }
   
   const industry = document.getElementById('portalIndustry');
@@ -5108,7 +5889,8 @@ function renderJobsiteDashboard(data) {
     industry.textContent = formatIndustryDisplay(industryTrack);
   }
 
-  populateAccountIdentityFields(data.user);
+  populateAccountIdentityFields(data.user, { profile: data.profile || {} });
+  applyPortalStaticTranslations();
 
   applyJobsiteIndustryTrackToForms(data && data.profile ? data.profile.industryTrack : 'warehouse');
 
@@ -5122,11 +5904,13 @@ function renderJobsiteDashboard(data) {
   const profile = document.getElementById('jobsiteProfile');
   if (profile) {
     profile.innerHTML = `
-      <div class="profile-info__item"><span class="profile-info__label">Company</span><span>${escapeHtml(data.profile.companyName || 'Not set')}</span></div>
-      <div class="profile-info__item"><span class="profile-info__label">Contact</span><span>${escapeHtml(data.profile.contactName || 'Not set')}</span></div>
-      <div class="profile-info__item"><span class="profile-info__label">Industry Track</span><span>${escapeHtml(formatIndustryTrackLabel(data.profile.industryTrack))}</span></div>
-      <div class="profile-info__item"><span class="profile-info__label">Phone</span><span>${escapeHtml(formatPhoneForView(data.profile.phone))}</span></div>
-      <div class="profile-info__item"><span class="profile-info__label">Address</span><span>${escapeHtml(data.profile.address || 'Not set')}</span></div>
+      <div class="profile-info__item"><span class="profile-info__label">${escapeHtml(t('account.fullName'))}</span><span>${escapeHtml(data.user.name || t('common.notSet'))}</span></div>
+      <div class="profile-info__item"><span class="profile-info__label">${escapeHtml(t('jobsite.company'))}</span><span>${escapeHtml(data.profile.companyName || t('common.notSet'))}</span></div>
+      <div class="profile-info__item"><span class="profile-info__label">${escapeHtml(t('jobsite.contact'))}</span><span>${escapeHtml(data.profile.contactName || t('common.notSet'))}</span></div>
+      <div class="profile-info__item"><span class="profile-info__label">${escapeHtml(t('account.emailLabel'))}</span><span>${escapeHtml(data.user.email || t('common.notSet'))}</span></div>
+      <div class="profile-info__item"><span class="profile-info__label">${escapeHtml(t('jobsite.industryTrack'))}</span><span>${escapeHtml(formatIndustryTrackLabel(data.profile.industryTrack))}</span></div>
+      <div class="profile-info__item"><span class="profile-info__label">${escapeHtml(t('common.phone'))}</span><span>${escapeHtml(formatPhoneForView(data.profile.phone, t('common.notSet')))}</span></div>
+      <div class="profile-info__item"><span class="profile-info__label">${escapeHtml(t('employee.address'))}</span><span>${escapeHtml([data.profile.address, data.profile.city, data.profile.state, data.profile.zip].filter(Boolean).join(', ') || t('common.notSet'))}</span></div>
     `;
   }
 
@@ -5138,7 +5922,7 @@ function renderJobsiteDashboard(data) {
       return `<tr><td>${escapeHtml(a.employeeName || '—')}</td><td>${escapeHtml(a.employeePosition || '—')}</td><td>${escapeHtml(a.jobTitle || '—')}${a.jobSchedule ? `<br><span style="font-size:0.78rem;color:var(--color-muted);">${escapeHtml(a.jobSchedule)}</span>` : ''}</td><td>${statusBadge(a.status || 'assigned')}${reasonText}</td><td><div style="display:flex;gap:0.4rem;flex-wrap:wrap;align-items:center;"><select data-jobsite-assignment-status="${escapeHtml(a.id)}" class="input input--sm" style="min-width:150px;"><option value="assigned" ${String(a.status) === 'assigned' ? 'selected' : ''}>Assigned</option><option value="approved" ${String(a.status) === 'approved' ? 'selected' : ''}>Approved</option><option value="completed" ${String(a.status) === 'completed' ? 'selected' : ''}>Completed</option><option value="cancelled" ${String(a.status) === 'cancelled' ? 'selected' : ''}>Cancelled</option><option value="no_call_no_show" ${String(a.status) === 'no_call_no_show' ? 'selected' : ''}>No Call No Show</option></select><button class="button button--ghost button--sm" type="button" data-jobsite-apply-assignment-status="${escapeHtml(a.id)}">Apply</button></div></td></tr>`;
     }),
     5,
-    'No workers currently assigned to your shifts.'
+    t('jobsite.noAssignedWorkers')
   );
 
   // Assigned worker documents (scoped and filtered by backend)
@@ -5192,7 +5976,7 @@ function renderJobsiteDashboard(data) {
   const jobsEl = document.getElementById('jobsiteJobs');
   if (jobsEl) {
     if (!allJobs.length) {
-      jobsEl.innerHTML = '<p class="empty-state">No jobs posted yet. Use the form on the right to create your first job.</p>';
+      jobsEl.innerHTML = `<p class="empty-state">${escapeHtml(t('jobsite.noJobs'))}</p>`;
     } else {
       jobsEl.innerHTML = allJobs.map(job => `
         <div class="job-card-item">
@@ -11176,8 +11960,11 @@ async function initPortalPage() {
   }
   portalCurrentUserId = Number(user.id) || null;
   portalCurrentUser = user;
+  setPortalDocumentLanguage(user.preferredLanguage || getStoredPortalLanguage());
   bindPortalThemeToggle();
   populateAccountIdentityFields(user);
+  applyPortalStaticTranslations();
+  bindPortalLanguageSelector();
 
   if (pageType === 'employee') {
     bindPortalMessaging();

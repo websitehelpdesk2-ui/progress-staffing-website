@@ -5344,7 +5344,6 @@ function createLimiter(windowMs, max, message, options = {}) {
 }
 
 if (isUsingPostgres) {
-  runSafePostgresMigrations(db);
   if (AUTO_DB_BOOTSTRAP) {
     bootstrapPostgresSchema(db);
   } else {
@@ -14442,6 +14441,9 @@ function checkContractRenewals() {
 }
 
 server.listen(port, () => {
+  if (isUsingPostgres) {
+    runSafePostgresMigrations(db);
+  }
   startExpirationReminderScheduler();
   startPaperTimesheetReminderScheduler();
   // Check for contract renewals on startup and then hourly

@@ -562,6 +562,10 @@ function t(key, vars = {}) {
   return getTranslationValue(key, vars);
 }
 
+function isEmployeePortalPage() {
+  return String(document.body?.dataset?.portalPage || '').trim().toLowerCase() === 'employee';
+}
+
 function setPortalDocumentLanguage(language) {
   const normalized = PORTAL_LANGUAGE_LABELS[language] ? language : PORTAL_DEFAULT_LANGUAGE;
   portalLanguage = normalized;
@@ -605,7 +609,7 @@ function applyPortalStaticTranslations() {
 }
 
 if (document && document.documentElement) {
-  setPortalDocumentLanguage(getStoredPortalLanguage());
+  setPortalDocumentLanguage(isEmployeePortalPage() ? getStoredPortalLanguage() : PORTAL_DEFAULT_LANGUAGE);
 }
 
 function setMessage(element, text, type) {
@@ -2249,7 +2253,17 @@ function bindNotificationPreferenceAutoSave() {
 
 function bindPortalLanguageSelector() {
   const selector = document.getElementById('portalLanguageSelect');
-  if (!selector || selector.dataset.bound === '1') return;
+  if (!selector) return;
+  if (!isEmployeePortalPage()) {
+    const label = selector.closest('.portal-language-picker');
+    if (label) {
+      label.hidden = true;
+    } else {
+      selector.hidden = true;
+    }
+    return;
+  }
+  if (selector.dataset.bound === '1') return;
 
   selector.dataset.bound = '1';
   selector.value = portalLanguage;
@@ -5348,8 +5362,8 @@ async function loadCurrentUser(options = {}) {
     if (!res.ok) return null;
     const payload = await res.json();
     portalSmtpConfigured = payload && payload.emailConfigured !== false && payload.smtpConfigured !== false;
-    if (payload && payload.user && payload.user.preferredLanguage) {
-      setPortalDocumentLanguage(payload.user.preferredLanguage);
+    if (isEmployeePortalPage() && payload && payload.user && payload.user.preferredLanguage) {
+      setPortalDocumentLanguage(payload.user.preferredLanguage || PORTAL_DEFAULT_LANGUAGE);
       applyPortalStaticTranslations();
     }
     return payload.user;
@@ -11972,7 +11986,7 @@ async function initPortalPage() {
   }
   portalCurrentUserId = Number(user.id) || null;
   portalCurrentUser = user;
-  setPortalDocumentLanguage(user.preferredLanguage || getStoredPortalLanguage());
+  setPortalDocumentLanguage(isEmployeePortalPage() ? (user.preferredLanguage || PORTAL_DEFAULT_LANGUAGE) : PORTAL_DEFAULT_LANGUAGE);
   bindPortalThemeToggle();
   populateAccountIdentityFields(user);
   applyPortalStaticTranslations();

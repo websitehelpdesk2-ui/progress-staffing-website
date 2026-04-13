@@ -8591,7 +8591,7 @@ app.post('/api/portal/employee/documents', authGuard(['employee']), (req, res) =
 
     if (ADMIN_ONLY_DOCUMENT_TYPES.has(documentType)) {
       discardUploadedFile(req.file);
-      return res.status(403).json({ error: 'Background documents can only be uploaded by an admin.' });
+      return res.status(403).json({ error: 'Background documents can only be uploaded by admin or onboarding.' });
     }
 
     if (documentType === 'tuberculosis_screening_tb') {

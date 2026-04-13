@@ -3871,9 +3871,20 @@ function openEmployeeUploadForDocumentType(documentType = '') {
   if (!form) return;
 
   const normalizedType = String(documentType || '').trim();
-  if (normalizedType && form.documentType) {
-    form.documentType.value = normalizedType;
-    form.documentType.dispatchEvent(new Event('change', { bubbles: true }));
+  const typeSelect = form.documentType;
+  if (normalizedType && typeSelect) {
+    const hasOption = Array.from(typeSelect.options || []).some((option) => String(option.value || '').trim() === normalizedType);
+    if (!hasOption) {
+      const fallbackOption = document.createElement('option');
+      fallbackOption.value = normalizedType;
+      fallbackOption.textContent = DOCUMENT_TYPE_LABELS[normalizedType] || normalizedType;
+      fallbackOption.dataset.dynamicUploadFallback = '1';
+      typeSelect.appendChild(fallbackOption);
+      console.warn('Checklist upload fallback added missing document type option.', { documentType: normalizedType });
+    }
+
+    typeSelect.value = normalizedType;
+    typeSelect.dispatchEvent(new Event('change', { bubbles: true }));
   }
 
   const uploadSection = form.closest('.portal-section');
@@ -5771,6 +5782,8 @@ function renderEmployeeDashboard(data) {
         if (item.kind === 'form') {
           const formKey = item.documentType === 'background_acknowledgment_consent' ? 'background-consent' : 'hipaa-compliance';
           uploadAction = `<button class="button button--ghost button--sm" type="button" data-employee-web-form="${escapeHtml(formKey)}">${item.complete ? 'Review Form' : 'Complete Form'}</button>`;
+        } else if (item.documentType === 'background_check') {
+          uploadAction = '<span class="badge badge--gray">Admin Upload Only</span>';
         } else if (item.documentType === 'covid19_vaccine_card') {
           // Merged row: show combined label and two upload buttons
           label = 'Covid-19 Vaccine Card / Religious Exemption Form (signed by primary provider)';

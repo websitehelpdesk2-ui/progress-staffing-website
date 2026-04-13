@@ -8,6 +8,114 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
+  <style>
+    .home-nav-assistant {
+      position: fixed;
+      right: 1rem;
+      bottom: 1rem;
+      width: min(360px, calc(100vw - 2rem));
+      z-index: 1200;
+      border: 1px solid rgba(23, 68, 43, 0.22);
+      border-radius: 14px;
+      background: #ffffff;
+      box-shadow: 0 16px 32px rgba(18, 36, 29, 0.16);
+      overflow: hidden;
+    }
+
+    .home-nav-assistant__head {
+      padding: 0.65rem 0.9rem;
+      background: #e9f5ee;
+      border-bottom: 1px solid rgba(23, 68, 43, 0.15);
+      font-size: 0.92rem;
+      font-weight: 700;
+      color: #16442f;
+    }
+
+    .home-nav-assistant__body {
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+      padding: 0.8rem;
+    }
+
+    .home-nav-assistant__messages {
+      max-height: 200px;
+      overflow: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 0.45rem;
+    }
+
+    .home-nav-assistant__msg {
+      margin: 0;
+      padding: 0.5rem 0.62rem;
+      border-radius: 10px;
+      font-size: 0.88rem;
+      line-height: 1.4;
+    }
+
+    .home-nav-assistant__msg--bot {
+      background: #f2f8f4;
+      color: #12372a;
+      align-self: flex-start;
+    }
+
+    .home-nav-assistant__msg--user {
+      background: #17442f;
+      color: #ffffff;
+      align-self: flex-end;
+    }
+
+    .home-nav-assistant__examples {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+    }
+
+    .home-nav-assistant__examples button {
+      border: 1px solid rgba(23, 68, 43, 0.24);
+      background: #ffffff;
+      color: #16442f;
+      border-radius: 999px;
+      padding: 0.2rem 0.58rem;
+      font-size: 0.76rem;
+      cursor: pointer;
+    }
+
+    .home-nav-assistant__input-row {
+      display: flex;
+      gap: 0.4rem;
+    }
+
+    .home-nav-assistant__input-row input {
+      flex: 1;
+      min-width: 0;
+      border: 1px solid rgba(23, 68, 43, 0.26);
+      border-radius: 10px;
+      padding: 0.48rem 0.58rem;
+      font: inherit;
+      font-size: 0.88rem;
+    }
+
+    .home-nav-assistant__action {
+      display: flex;
+      justify-content: flex-start;
+    }
+
+    .home-nav-assistant__action a {
+      font-size: 0.82rem;
+      padding: 0.38rem 0.62rem;
+    }
+
+    @media (max-width: 640px) {
+      .home-nav-assistant {
+        right: 0.6rem;
+        left: 0.6rem;
+        width: auto;
+        bottom: 0.6rem;
+      }
+    }
+  </style>
 </head>
 <body class="home-page">
   <header class="site-header">
@@ -205,6 +313,24 @@
     </div>
   </section>
 
+  <section id="homeNavAssistant" class="home-nav-assistant" aria-label="Navigation assistant">
+    <div class="home-nav-assistant__head">Navigation Assistant</div>
+    <div class="home-nav-assistant__body">
+      <div id="homeNavAssistantMessages" class="home-nav-assistant__messages" aria-live="polite"></div>
+      <div class="home-nav-assistant__examples" aria-label="Example prompts">
+        <button type="button" data-nav-example="Register">Register</button>
+        <button type="button" data-nav-example="Portal Login">Portal Login</button>
+        <button type="button" data-nav-example="Forgot Password">Forgot Password</button>
+        <button type="button" data-nav-example="Contact">Contact</button>
+      </div>
+      <div class="home-nav-assistant__input-row">
+        <input id="homeNavAssistantInput" type="text" placeholder="Type: register, login, contact..." autocomplete="off" />
+        <button id="homeNavAssistantSend" class="button button--sm" type="button">Go</button>
+      </div>
+      <div id="homeNavAssistantAction" class="home-nav-assistant__action" hidden></div>
+    </div>
+  </section>
+
   <script src="/socket.io/socket.io.js"></script>
   <script src="theme.js"></script>
   <script>
@@ -261,6 +387,154 @@
       } catch (_error) {
         // keep page behavior unchanged if admin realtime setup fails
       }
+    })();
+
+    (() => {
+      const host = document.getElementById('homeNavAssistant');
+      const messages = document.getElementById('homeNavAssistantMessages');
+      const input = document.getElementById('homeNavAssistantInput');
+      const send = document.getElementById('homeNavAssistantSend');
+      const action = document.getElementById('homeNavAssistantAction');
+      const exampleButtons = document.querySelectorAll('[data-nav-example]');
+      if (!host || !messages || !input || !send || !action) return;
+
+      const fallbackSuggestions = [
+        { label: 'Register', href: '/portal-register' },
+        { label: 'Portal Login', href: '/portal-login' },
+        { label: 'Contact', href: '#about' },
+        { label: 'Tech Support', href: 'https://meet.google.com/qre-frde-rhz', newTab: true },
+      ];
+
+      const intents = [
+        {
+          response: 'You can register here.',
+          href: '/portal-register',
+          patterns: [/(^|\b)(register|sign up|signup|create account)(\b|$)/i, /where.*register/i],
+        },
+        {
+          response: 'Use the portal login page.',
+          href: '/portal-login',
+          patterns: [/(^|\b)(portal\s*login|login|sign in|log in)(\b|$)/i],
+        },
+        {
+          response: 'Open login and select Forgot password to request a reset link.',
+          href: '/portal-login',
+          patterns: [/(^|\b)(forgot password|reset password|password reset)(\b|$)/i],
+        },
+        {
+          response: 'Opening employee portal.',
+          href: '/portal-employee',
+          patterns: [/(^|\b)(employee portal|employee dashboard)(\b|$)/i],
+        },
+        {
+          response: 'Opening client portal.',
+          href: '/portal-jobsite',
+          patterns: [/(^|\b)(client portal|jobsite portal|client dashboard)(\b|$)/i],
+        },
+        {
+          response: 'Opening onboarding portal.',
+          href: '/portal-onboarding',
+          patterns: [/(^|\b)(onboarding|on boarding)(\b|$)/i],
+        },
+        {
+          response: 'Here is Tech Support.',
+          href: 'https://meet.google.com/qre-frde-rhz',
+          newTab: true,
+          patterns: [/(^|\b)(tech support|help desk|support)(\b|$)/i],
+        },
+        {
+          response: 'Here is our contact section.',
+          href: '#about',
+          patterns: [/(^|\b)(contact|phone|email|address)(\b|$)/i],
+        },
+      ];
+
+      function addMessage(text, role) {
+        if (!messages) return;
+        const p = document.createElement('p');
+        p.className = `home-nav-assistant__msg ${role === 'user' ? 'home-nav-assistant__msg--user' : 'home-nav-assistant__msg--bot'}`;
+        p.textContent = text;
+        messages.appendChild(p);
+        messages.scrollTop = messages.scrollHeight;
+      }
+
+      function findIntent(rawText) {
+        const text = String(rawText || '').trim();
+        if (!text) return null;
+        for (const intent of intents) {
+          if (Array.isArray(intent.patterns) && intent.patterns.some((pattern) => pattern.test(text))) {
+            return intent;
+          }
+        }
+        return null;
+      }
+
+      function renderActionLink(label, href, newTab = false) {
+        action.hidden = false;
+        action.innerHTML = '';
+        const link = document.createElement('a');
+        link.className = 'button button--secondary button--sm';
+        link.href = href;
+        link.textContent = label;
+        if (newTab) {
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+        }
+        action.appendChild(link);
+      }
+
+      function handleInput(value) {
+        const text = String(value || '').trim();
+        if (!text) return;
+        addMessage(text, 'user');
+
+        const intent = findIntent(text);
+        if (intent) {
+          addMessage(intent.response, 'bot');
+          renderActionLink('Open destination', intent.href, Boolean(intent.newTab));
+          return;
+        }
+
+        addMessage('I can help with navigation. Try one of these destinations:', 'bot');
+        action.hidden = false;
+        action.innerHTML = '';
+        fallbackSuggestions.forEach((item) => {
+          const link = document.createElement('a');
+          link.className = 'button button--ghost button--sm';
+          link.href = item.href;
+          link.textContent = item.label;
+          if (item.newTab) {
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+          }
+          action.appendChild(link);
+        });
+      }
+
+      addMessage('Need help finding something? Type where you want to go.', 'bot');
+
+      send.addEventListener('click', () => {
+        handleInput(input.value);
+        input.value = '';
+        input.focus();
+      });
+
+      input.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter') return;
+        event.preventDefault();
+        handleInput(input.value);
+        input.value = '';
+      });
+
+      exampleButtons.forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const value = String(btn.dataset.navExample || '').trim();
+          if (!value) return;
+          input.value = value;
+          handleInput(value);
+          input.value = '';
+        });
+      });
     })();
   </script>
 </body>

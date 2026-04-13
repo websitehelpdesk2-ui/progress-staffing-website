@@ -605,7 +605,7 @@ function applyPortalStaticTranslations() {
 }
 
 if (document && document.documentElement) {
-  setPortalDocumentLanguage(getStoredPortalLanguage());
+  setPortalDocumentLanguage(PORTAL_DEFAULT_LANGUAGE);
 }
 
 function setMessage(element, text, type) {
@@ -5336,10 +5336,6 @@ async function loadCurrentUser(options = {}) {
     if (!res.ok) return null;
     const payload = await res.json();
     portalSmtpConfigured = payload && payload.emailConfigured !== false && payload.smtpConfigured !== false;
-    if (payload && payload.user && payload.user.preferredLanguage) {
-      setPortalDocumentLanguage(payload.user.preferredLanguage);
-      applyPortalStaticTranslations();
-    }
     return payload.user;
   } catch (_error) {
     portalSmtpConfigured = true;
@@ -11960,7 +11956,7 @@ async function initPortalPage() {
   }
   portalCurrentUserId = Number(user.id) || null;
   portalCurrentUser = user;
-  setPortalDocumentLanguage(user.preferredLanguage || getStoredPortalLanguage());
+  setPortalDocumentLanguage(PORTAL_DEFAULT_LANGUAGE);
   bindPortalThemeToggle();
   populateAccountIdentityFields(user);
   applyPortalStaticTranslations();

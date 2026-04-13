@@ -605,7 +605,7 @@ function applyPortalStaticTranslations() {
 }
 
 if (document && document.documentElement) {
-  setPortalDocumentLanguage(PORTAL_DEFAULT_LANGUAGE);
+  setPortalDocumentLanguage(getStoredPortalLanguage());
 }
 
 function setMessage(element, text, type) {
@@ -4024,6 +4024,18 @@ function setupPortalWidgetLayout(pageType) {
     }
   });
 
+  const techSupportTile = document.createElement('a');
+  techSupportTile.className = 'portal-widget-tile';
+  techSupportTile.href = 'https://meet.google.com/qre-frde-rhz';
+  techSupportTile.target = '_blank';
+  techSupportTile.rel = 'noopener noreferrer';
+  techSupportTile.innerHTML = `
+    <span class="portal-widget-tile__title">Tech Support</span>
+    <span class="portal-widget-tile__summary">Need help? Join Tech Support</span>
+    <span class="portal-widget-tile__hint">Must have Gmail account to access the meeting</span>
+  `;
+  tileGrid.appendChild(techSupportTile);
+
   root.appendChild(tileGrid);
 
   Array.from(root.querySelectorAll('.portal-cols')).forEach((cols) => {
@@ -5336,6 +5348,10 @@ async function loadCurrentUser(options = {}) {
     if (!res.ok) return null;
     const payload = await res.json();
     portalSmtpConfigured = payload && payload.emailConfigured !== false && payload.smtpConfigured !== false;
+    if (payload && payload.user && payload.user.preferredLanguage) {
+      setPortalDocumentLanguage(payload.user.preferredLanguage);
+      applyPortalStaticTranslations();
+    }
     return payload.user;
   } catch (_error) {
     portalSmtpConfigured = true;
@@ -11956,7 +11972,7 @@ async function initPortalPage() {
   }
   portalCurrentUserId = Number(user.id) || null;
   portalCurrentUser = user;
-  setPortalDocumentLanguage(PORTAL_DEFAULT_LANGUAGE);
+  setPortalDocumentLanguage(user.preferredLanguage || getStoredPortalLanguage());
   bindPortalThemeToggle();
   populateAccountIdentityFields(user);
   applyPortalStaticTranslations();

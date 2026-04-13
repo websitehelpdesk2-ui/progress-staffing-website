@@ -20,15 +20,56 @@
       background: #ffffff;
       box-shadow: 0 16px 32px rgba(18, 36, 29, 0.16);
       overflow: hidden;
+      transform: translateY(calc(100% + 1.25rem));
+      opacity: 0;
+      pointer-events: none;
+      transition: transform 180ms ease, opacity 180ms ease;
+    }
+
+    .home-nav-assistant.is-open {
+      transform: translateY(0);
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .home-nav-assistant-toggle {
+      position: fixed;
+      right: 1rem;
+      bottom: 1rem;
+      z-index: 1199;
+      border-radius: 999px;
+      box-shadow: 0 10px 20px rgba(18, 36, 29, 0.2);
+    }
+
+    .home-nav-assistant.is-open + .home-nav-assistant-toggle {
+      opacity: 0;
+      pointer-events: none;
     }
 
     .home-nav-assistant__head {
       padding: 0.65rem 0.9rem;
       background: #e9f5ee;
       border-bottom: 1px solid rgba(23, 68, 43, 0.15);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+    }
+
+    .home-nav-assistant__head-title {
       font-size: 0.92rem;
       font-weight: 700;
       color: #16442f;
+    }
+
+    .home-nav-assistant__close {
+      border: 1px solid rgba(23, 68, 43, 0.24);
+      background: #ffffff;
+      color: #16442f;
+      border-radius: 8px;
+      padding: 0.2rem 0.45rem;
+      font-size: 0.75rem;
+      cursor: pointer;
     }
 
     .home-nav-assistant__body {
@@ -112,6 +153,11 @@
         right: 0.6rem;
         left: 0.6rem;
         width: auto;
+        bottom: 0.6rem;
+      }
+
+      .home-nav-assistant-toggle {
+        right: 0.6rem;
         bottom: 0.6rem;
       }
     }
@@ -313,15 +359,17 @@
     </div>
   </section>
 
-  <section id="homeNavAssistant" class="home-nav-assistant" aria-label="Navigation assistant">
-    <div class="home-nav-assistant__head">Navigation Assistant</div>
+  <section id="homeNavAssistant" class="home-nav-assistant" aria-label="Navigation assistant" aria-hidden="true">
+    <div class="home-nav-assistant__head">
+      <span class="home-nav-assistant__head-title">Navigation Assistant</span>
+      <button id="homeNavAssistantClose" class="home-nav-assistant__close" type="button" aria-label="Close navigation assistant">Close</button>
+    </div>
     <div class="home-nav-assistant__body">
       <div id="homeNavAssistantMessages" class="home-nav-assistant__messages" aria-live="polite"></div>
       <div class="home-nav-assistant__examples" aria-label="Example prompts">
         <button type="button" data-nav-example="Register">Register</button>
         <button type="button" data-nav-example="Portal Login">Portal Login</button>
         <button type="button" data-nav-example="Forgot Password">Forgot Password</button>
-        <button type="button" data-nav-example="Contact">Contact</button>
       </div>
       <div class="home-nav-assistant__input-row">
         <input id="homeNavAssistantInput" type="text" placeholder="Type: register, login, contact..." autocomplete="off" />
@@ -330,6 +378,7 @@
       <div id="homeNavAssistantAction" class="home-nav-assistant__action" hidden></div>
     </div>
   </section>
+  <button id="homeNavAssistantToggle" class="button button--secondary button--sm home-nav-assistant-toggle" type="button" aria-expanded="false" aria-controls="homeNavAssistant">Navigation Assistant</button>
 
   <script src="/socket.io/socket.io.js"></script>
   <script src="theme.js"></script>
@@ -391,17 +440,35 @@
 
     (() => {
       const host = document.getElementById('homeNavAssistant');
+      const toggle = document.getElementById('homeNavAssistantToggle');
+      const close = document.getElementById('homeNavAssistantClose');
       const messages = document.getElementById('homeNavAssistantMessages');
       const input = document.getElementById('homeNavAssistantInput');
       const send = document.getElementById('homeNavAssistantSend');
       const action = document.getElementById('homeNavAssistantAction');
       const exampleButtons = document.querySelectorAll('[data-nav-example]');
-      if (!host || !messages || !input || !send || !action) return;
+      if (!host || !toggle || !close || !messages || !input || !send || !action) return;
+
+      function setAssistantOpen(isOpen) {
+        host.classList.toggle('is-open', Boolean(isOpen));
+        host.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
+        toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        if (isOpen) {
+          input.focus();
+        }
+      }
+
+      toggle.addEventListener('click', () => setAssistantOpen(true));
+      close.addEventListener('click', () => setAssistantOpen(false));
+      document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && host.classList.contains('is-open')) {
+          setAssistantOpen(false);
+        }
+      });
 
       const fallbackSuggestions = [
         { label: 'Register', href: '/portal-register' },
         { label: 'Portal Login', href: '/portal-login' },
-        { label: 'Contact', href: '#about' },
         { label: 'Tech Support', href: 'https://meet.google.com/qre-frde-rhz', newTab: true },
       ];
 
@@ -530,6 +597,17 @@
         btn.addEventListener('click', () => {
           const value = String(btn.dataset.navExample || '').trim();
           if (!value) return;
+
+          if (/^register$/i.test(value)) {
+            window.location.href = '/portal-register';
+            return;
+          }
+
+          if (/^portal\s*login$/i.test(value)) {
+            window.location.href = '/portal-login';
+            return;
+          }
+
           input.value = value;
           handleInput(value);
           input.value = '';

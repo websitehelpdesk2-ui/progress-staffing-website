@@ -1306,6 +1306,202 @@ function syncW9ConditionalFields(form) {
   if (otherRow) otherRow.hidden = classification !== 'other';
 }
 
+function getTodayIsoDate() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function buildEmployeeW4Payload(form) {
+  return {
+    legalName: form.legalName.value.trim(),
+    addressLine: form.addressLine.value.trim(),
+    cityStateZip: form.cityStateZip.value.trim(),
+    filingStatus: form.filingStatus.value,
+    multipleJobs: form.multipleJobs.value,
+    dependentsAmount: form.dependentsAmount.value,
+    otherIncome: form.otherIncome.value,
+    deductions: form.deductions.value,
+    extraWithholding: form.extraWithholding.value,
+    signatureName: form.signatureName.value.trim(),
+    signedDate: form.signedDate.value,
+  };
+}
+
+function buildEmployeeW9Payload(form) {
+  const classification = form.taxClassification.value;
+  return {
+    name: form.name.value.trim(),
+    businessName: form.businessName.value.trim(),
+    taxClassification: classification,
+    llcType: classification === 'llc' ? (form.llcType ? form.llcType.value : '') : '',
+    otherClassification: classification === 'other' ? (form.otherClassification ? form.otherClassification.value.trim() : '') : '',
+    exemptPayeeCode: form.exemptPayeeCode.value.trim(),
+    fatcaExemptionCode: form.fatcaExemptionCode.value.trim(),
+    addressLine: form.addressLine.value.trim(),
+    cityStateZip: form.cityStateZip.value.trim(),
+    tin: form.tin.value.trim(),
+    signatureName: form.signatureName.value.trim(),
+    signedDate: form.signedDate.value,
+  };
+}
+
+function syncEmployeeTaxFormSnapshot(form, formType) {
+  if (!form) return;
+  const payload = formType === 'w9' ? buildEmployeeW9Payload(form) : buildEmployeeW4Payload(form);
+  form.dataset.savedState = JSON.stringify(payload);
+}
+
+function resetEmployeeW4Form(form) {
+  if (!form) return;
+  form.reset();
+  if (form.multipleJobs) form.multipleJobs.value = '0';
+  if (form.signedDate) form.signedDate.value = getTodayIsoDate();
+}
+
+function applyEmployeeW4Form(form, data) {
+  if (!form) return;
+  resetEmployeeW4Form(form);
+  if (data) {
+    form.legalName.value = data.legalName || '';
+    form.addressLine.value = data.addressLine || '';
+    form.cityStateZip.value = data.cityStateZip || '';
+    form.filingStatus.value = data.filingStatus || '';
+    form.multipleJobs.value = String(data.multipleJobs || 0);
+    form.dependentsAmount.value = data.dependentsAmount ?? '';
+    form.otherIncome.value = data.otherIncome ?? '';
+    form.deductions.value = data.deductions ?? '';
+    form.extraWithholding.value = data.extraWithholding ?? '';
+    form.signatureName.value = data.signatureName || '';
+    form.signedDate.value = data.signedDate || getTodayIsoDate();
+  }
+  syncEmployeeTaxFormSnapshot(form, 'w4');
+}
+
+function resetEmployeeW9Form(form) {
+  if (!form) return;
+  form.reset();
+  if (form.signedDate) form.signedDate.value = getTodayIsoDate();
+  syncW9ConditionalFields(form);
+}
+
+function applyEmployeeW9Form(form, data) {
+  if (!form) return;
+  resetEmployeeW9Form(form);
+  if (data) {
+    form.name.value = data.name || '';
+    form.businessName.value = data.businessName || '';
+    form.taxClassification.value = data.taxClassification || '';
+    syncW9ConditionalFields(form);
+    if (form.llcType) form.llcType.value = data.llcType || '';
+    if (form.otherClassification) form.otherClassification.value = data.otherClassification || '';
+    form.exemptPayeeCode.value = data.exemptPayeeCode || '';
+    form.fatcaExemptionCode.value = data.fatcaExemptionCode || '';
+    form.addressLine.value = data.addressLine || '';
+    form.cityStateZip.value = data.cityStateZip || '';
+    form.tin.value = data.tin || '';
+    form.signatureName.value = data.signatureName || '';
+    form.signedDate.value = data.signedDate || getTodayIsoDate();
+  }
+  syncW9ConditionalFields(form);
+  syncEmployeeTaxFormSnapshot(form, 'w9');
+}
+
+function restoreEmployeeTaxFormSnapshot(form, formType) {
+  if (!form) return;
+  let snapshot = null;
+  if (form.dataset.savedState) {
+    try {
+      snapshot = JSON.parse(form.dataset.savedState);
+    } catch (error) {
+      snapshot = null;
+    }
+  }
+
+  if (formType === 'w9') {
+    applyEmployeeW9Form(form, snapshot);
+    return;
+  }
+
+  applyEmployeeW4Form(form, snapshot);
+}
+
+function hasUnsavedEmployeeTaxFormChanges(form, formType) {
+  if (!form) return false;
+  const currentState = JSON.stringify(formType === 'w9' ? buildEmployeeW9Payload(form) : buildEmployeeW4Payload(form));
+  return currentState !== (form.dataset.savedState || '');
+}
+
+function formatTaxFormDetailValue(value) {
+  if (value === undefined || value === null || value === '') return 'N/A';
+  return escapeHtml(String(value));
+}
+
+function renderAdminTaxFormDetail(formType) {
+  const panel = document.getElementById('adminTaxFormDetailPanel');
+  const body = document.getElementById('adminTaxFormDetailBody');
+  const detailMsg = document.getElementById('adminTaxFormDetailMessage');
+  if (!panel || !body || !detailMsg) return;
+
+  const detail = adminState.selectedEmployeeDetail || {};
+  if (formType === 'w4' && detail.w4Form) {
+    const form = detail.w4Form;
+    const filingStatusLabels = {
+      single: 'Single',
+      married_filing_jointly: 'Married Filing Jointly',
+      head_of_household: 'Head of Household',
+    };
+    body.innerHTML = `
+      <div class="profile-info__item"><span class="profile-info__label">Form</span><span>Form W-4</span></div>
+      <div class="profile-info__item"><span class="profile-info__label">Legal Name</span><span>${formatTaxFormDetailValue(form.legalName)}</span></div>
+      <div class="profile-info__item"><span class="profile-info__label">Address</span><span>${formatTaxFormDetailValue(form.addressLine)}</span></div>
+      <div class="profile-info__item"><span class="profile-info__label">City, State, Zip</span><span>${formatTaxFormDetailValue(form.cityStateZip)}</span></div>
+      <div class="profile-info__item"><span class="profile-info__label">Filing Status</span><span>${formatTaxFormDetailValue(filingStatusLabels[form.filingStatus] || form.filingStatus || '')}</span></div>
+      <div class="profile-info__item"><span class="profile-info__label">Multiple Jobs</span><span>${Number(form.multipleJobs) === 1 ? 'Yes' : 'No'}</span></div>
+      <div class="profile-info__item"><span class="profile-info__label">Dependents Amount</span><span>${formatTaxFormDetailValue(form.dependentsAmount)}</span></div>
+      <div class="profile-info__item"><span class="profile-info__label">Other Income</span><span>${formatTaxFormDetailValue(form.otherIncome)}</span></div>
+      <div class="profile-info__item"><span class="profile-info__label">Deductions</span><span>${formatTaxFormDetailValue(form.deductions)}</span></div>
+      <div class="profile-info__item"><span class="profile-info__label">Extra Withholding</span><span>${formatTaxFormDetailValue(form.extraWithholding)}</span></div>
+      <div class="profile-info__item"><span class="profile-info__label">Signature</span><span>${formatTaxFormDetailValue(form.signatureName)}</span></div>
+      <div class="profile-info__item"><span class="profile-info__label">Signed Date</span><span>${escapeHtml(form.signedDate ? formatDateOnly(form.signedDate) : 'N/A')}</span></div>
+      <div class="profile-info__item"><span class="profile-info__label">Last Updated</span><span>${escapeHtml(form.updatedAt ? formatDateTime(form.updatedAt) : 'N/A')}</span></div>
+    `;
+    setMessage(detailMsg, 'Saved W-4 record loaded.', 'success');
+  } else if (formType === 'w9' && detail.w9Form) {
+    const form = detail.w9Form;
+    const classificationLabels = {
+      individual_sole_proprietor: 'Individual / Sole Proprietor / Single-Member LLC',
+      c_corporation: 'C Corporation',
+      s_corporation: 'S Corporation',
+      partnership: 'Partnership',
+      trust_estate: 'Trust / Estate',
+      llc: 'Limited Liability Company (LLC)',
+      other: 'Other',
+    };
+    body.innerHTML = `
+      <div class="profile-info__item"><span class="profile-info__label">Form</span><span>Form W-9</span></div>
+      <div class="profile-info__item"><span class="profile-info__label">Name</span><span>${formatTaxFormDetailValue(form.name)}</span></div>
+      <div class="profile-info__item"><span class="profile-info__label">Business Name</span><span>${formatTaxFormDetailValue(form.businessName)}</span></div>
+      <div class="profile-info__item"><span class="profile-info__label">Tax Classification</span><span>${formatTaxFormDetailValue(classificationLabels[form.taxClassification] || form.taxClassification || '')}</span></div>
+      <div class="profile-info__item"><span class="profile-info__label">LLC Type</span><span>${formatTaxFormDetailValue(form.llcType)}</span></div>
+      <div class="profile-info__item"><span class="profile-info__label">Other Classification</span><span>${formatTaxFormDetailValue(form.otherClassification)}</span></div>
+      <div class="profile-info__item"><span class="profile-info__label">Exempt Payee Code</span><span>${formatTaxFormDetailValue(form.exemptPayeeCode)}</span></div>
+      <div class="profile-info__item"><span class="profile-info__label">FATCA Exemption Code</span><span>${formatTaxFormDetailValue(form.fatcaExemptionCode)}</span></div>
+      <div class="profile-info__item"><span class="profile-info__label">Address</span><span>${formatTaxFormDetailValue(form.addressLine)}</span></div>
+      <div class="profile-info__item"><span class="profile-info__label">City, State, Zip</span><span>${formatTaxFormDetailValue(form.cityStateZip)}</span></div>
+      <div class="profile-info__item"><span class="profile-info__label">TIN</span><span>${formatTaxFormDetailValue(form.tin)}</span></div>
+      <div class="profile-info__item"><span class="profile-info__label">Signature</span><span>${formatTaxFormDetailValue(form.signatureName)}</span></div>
+      <div class="profile-info__item"><span class="profile-info__label">Signed Date</span><span>${escapeHtml(form.signedDate ? formatDateOnly(form.signedDate) : 'N/A')}</span></div>
+      <div class="profile-info__item"><span class="profile-info__label">Last Updated</span><span>${escapeHtml(form.updatedAt ? formatDateTime(form.updatedAt) : 'N/A')}</span></div>
+    `;
+    setMessage(detailMsg, 'Saved W-9 record loaded.', 'success');
+  } else {
+    body.innerHTML = '';
+    setMessage(detailMsg, 'No tax form details are available for this employee.', 'error');
+  }
+
+  panel.hidden = false;
+  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
 function populateDocumentTypeSelect(industry) {
   const sel = document.getElementById('employeeDocumentType');
   if (!sel) return;
@@ -5846,37 +6042,11 @@ function renderEmployeeDashboard(data) {
 
   // W-4 form pre-fill
   const w4FormEl = document.getElementById('employeeW4Form');
-  if (w4FormEl && data.w4Form) {
-    w4FormEl.legalName.value = data.w4Form.legalName || '';
-    w4FormEl.addressLine.value = data.w4Form.addressLine || '';
-    w4FormEl.cityStateZip.value = data.w4Form.cityStateZip || '';
-    w4FormEl.filingStatus.value = data.w4Form.filingStatus || '';
-    w4FormEl.multipleJobs.value = String(data.w4Form.multipleJobs || 0);
-    w4FormEl.dependentsAmount.value = data.w4Form.dependentsAmount ?? '';
-    w4FormEl.otherIncome.value = data.w4Form.otherIncome ?? '';
-    w4FormEl.deductions.value = data.w4Form.deductions ?? '';
-    w4FormEl.extraWithholding.value = data.w4Form.extraWithholding ?? '';
-    w4FormEl.signatureName.value = data.w4Form.signatureName || '';
-    w4FormEl.signedDate.value = data.w4Form.signedDate || '';
-  }
+  if (w4FormEl) applyEmployeeW4Form(w4FormEl, data.w4Form || null);
 
   // W-9 form pre-fill
   const w9FormEl = document.getElementById('employeeW9Form');
-  if (w9FormEl && data.w9Form) {
-    w9FormEl.name.value = data.w9Form.name || '';
-    w9FormEl.businessName.value = data.w9Form.businessName || '';
-    w9FormEl.taxClassification.value = data.w9Form.taxClassification || '';
-    syncW9ConditionalFields(w9FormEl);
-    if (w9FormEl.llcType) w9FormEl.llcType.value = data.w9Form.llcType || '';
-    if (w9FormEl.otherClassification) w9FormEl.otherClassification.value = data.w9Form.otherClassification || '';
-    w9FormEl.exemptPayeeCode.value = data.w9Form.exemptPayeeCode || '';
-    w9FormEl.fatcaExemptionCode.value = data.w9Form.fatcaExemptionCode || '';
-    w9FormEl.addressLine.value = data.w9Form.addressLine || '';
-    w9FormEl.cityStateZip.value = data.w9Form.cityStateZip || '';
-    w9FormEl.tin.value = data.w9Form.tin || '';
-    w9FormEl.signatureName.value = data.w9Form.signatureName || '';
-    w9FormEl.signedDate.value = data.w9Form.signedDate || '';
-  }
+  if (w9FormEl) applyEmployeeW9Form(w9FormEl, data.w9Form || null);
 
 }
 
@@ -6414,13 +6584,23 @@ function renderAdminEmployeeDetail(data) {
 
   const taxRows = [];
   const onboardingFormRows = [];
+  const canViewTaxDetails = Boolean(document.getElementById('adminTaxFormDetailPanel'));
   if (data.w4Form) {
-    taxRows.push(`<tr><td>W-4</td><td>${escapeHtml(data.w4Form.legalName || 'N/A')}</td><td>N/A</td><td>${escapeHtml(data.w4Form.signedDate ? formatDateOnly(data.w4Form.signedDate) : 'N/A')}</td><td>${escapeHtml(data.w4Form.updatedAt ? formatDateOnly(data.w4Form.updatedAt) : 'N/A')}</td></tr>`);
+    const detailButton = canViewTaxDetails ? ` <button class="button button--ghost button--sm" type="button" data-tax-form-details="w4">View Details</button>` : '';
+    taxRows.push(`<tr><td>W-4${detailButton}</td><td>${escapeHtml(data.w4Form.legalName || 'N/A')}</td><td>N/A</td><td>${escapeHtml(data.w4Form.signedDate ? formatDateOnly(data.w4Form.signedDate) : 'N/A')}</td><td>${escapeHtml(data.w4Form.updatedAt ? formatDateOnly(data.w4Form.updatedAt) : 'N/A')}</td></tr>`);
   }
   if (data.w9Form) {
-    taxRows.push(`<tr><td>W-9</td><td>${escapeHtml(data.w9Form.name || 'N/A')}</td><td>${escapeHtml(data.w9Form.tin || 'N/A')}</td><td>${escapeHtml(data.w9Form.signedDate ? formatDateOnly(data.w9Form.signedDate) : 'N/A')}</td><td>${escapeHtml(data.w9Form.updatedAt ? formatDateOnly(data.w9Form.updatedAt) : 'N/A')}</td></tr>`);
+    const detailButton = canViewTaxDetails ? ` <button class="button button--ghost button--sm" type="button" data-tax-form-details="w9">View Details</button>` : '';
+    taxRows.push(`<tr><td>W-9${detailButton}</td><td>${escapeHtml(data.w9Form.name || 'N/A')}</td><td>${escapeHtml(data.w9Form.tin || 'N/A')}</td><td>${escapeHtml(data.w9Form.signedDate ? formatDateOnly(data.w9Form.signedDate) : 'N/A')}</td><td>${escapeHtml(data.w9Form.updatedAt ? formatDateOnly(data.w9Form.updatedAt) : 'N/A')}</td></tr>`);
   }
   setTableRows('adminEmployeeTaxForms', taxRows, 5, 'No tax forms submitted yet.');
+
+  const taxDetailPanel = document.getElementById('adminTaxFormDetailPanel');
+  const taxDetailBody = document.getElementById('adminTaxFormDetailBody');
+  const taxDetailMsg = document.getElementById('adminTaxFormDetailMessage');
+  if (taxDetailPanel) taxDetailPanel.hidden = true;
+  if (taxDetailBody) taxDetailBody.innerHTML = '';
+  if (taxDetailMsg) setMessage(taxDetailMsg, 'Select a tax form to review.', 'neutral');
 
   if (data.backgroundConsentForm) {
     const backgroundNoticeUrl = getSignedOnboardingFormUrl('background-consent', employee.id);
@@ -7788,29 +7968,19 @@ function bindEmployeeForms(currentUser) {
   }
 
   const w4Form = document.getElementById('employeeW4Form');
+  const w9Form = document.getElementById('employeeW9Form');
   if (w4Form) {
     if (!w4Form.signedDate.value) {
-      w4Form.signedDate.value = new Date().toISOString().slice(0, 10);
+      w4Form.signedDate.value = getTodayIsoDate();
     }
+    syncEmployeeTaxFormSnapshot(w4Form, 'w4');
 
     w4Form.addEventListener('submit', async (event) => {
       event.preventDefault();
       const msg = document.getElementById('employeeW4Message');
       hideMessage(msg);
 
-      const payload = {
-        legalName: w4Form.legalName.value.trim(),
-        addressLine: w4Form.addressLine.value.trim(),
-        cityStateZip: w4Form.cityStateZip.value.trim(),
-        filingStatus: w4Form.filingStatus.value,
-        multipleJobs: w4Form.multipleJobs.value,
-        dependentsAmount: w4Form.dependentsAmount.value,
-        otherIncome: w4Form.otherIncome.value,
-        deductions: w4Form.deductions.value,
-        extraWithholding: w4Form.extraWithholding.value,
-        signatureName: w4Form.signatureName.value.trim(),
-        signedDate: w4Form.signedDate.value,
-      };
+      const payload = buildEmployeeW4Payload(w4Form);
 
       if (!payload.legalName || !payload.signatureName || !payload.signedDate) {
         setMessage(msg, 'Legal name, signature name, and signed date are required.', 'error');
@@ -7832,6 +8002,26 @@ function bindEmployeeForms(currentUser) {
       setMessage(msg, 'W-4 information saved successfully.', 'success');
       await loadEmployeeDashboard(currentUser);
     });
+
+    const clearW4Btn = document.getElementById('employeeW4ClearBtn');
+    if (clearW4Btn) {
+      clearW4Btn.addEventListener('click', async () => {
+        const msg = document.getElementById('employeeW4Message');
+        hideMessage(msg);
+        const confirmed = window.confirm('Clear your saved W-4 form and reset this form?');
+        if (!confirmed) return;
+
+        const res = await apiFetch('/api/portal/employee/w4', { method: 'DELETE' });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          setMessage(msg, data.error || 'Failed to clear W-4 information.', 'error');
+          return;
+        }
+
+        setMessage(msg, 'W-4 information cleared.', 'success');
+        await loadEmployeeDashboard(currentUser);
+      });
+    }
   }
 
   // Tax Forms tab switching
@@ -7840,7 +8030,23 @@ function bindEmployeeForms(currentUser) {
   const taxFormW4Panel = document.getElementById('taxFormW4Panel');
   const taxFormW9Panel = document.getElementById('taxFormW9Panel');
 
+  function getActiveTaxTab() {
+    return taxFormW9Panel && !taxFormW9Panel.hidden ? 'w9' : 'w4';
+  }
+
   function switchTaxTab(tab) {
+    const currentTab = getActiveTaxTab();
+    if (currentTab !== tab) {
+      const currentForm = currentTab === 'w9' ? w9Form : w4Form;
+      const currentMessage = document.getElementById(currentTab === 'w9' ? 'employeeW9Message' : 'employeeW4Message');
+      if (currentForm && hasUnsavedEmployeeTaxFormChanges(currentForm, currentTab)) {
+        const confirmed = window.confirm('You have unsaved tax form changes. Switch forms and discard those unsaved changes?');
+        if (!confirmed) return;
+        restoreEmployeeTaxFormSnapshot(currentForm, currentTab);
+        if (currentMessage) hideMessage(currentMessage);
+      }
+    }
+
     const isW4 = tab === 'w4';
     if (taxTabW4Btn) {
       taxTabW4Btn.classList.toggle('portal-tax-tab--active', isW4);
@@ -7866,32 +8072,19 @@ function bindEmployeeForms(currentUser) {
   }
 
   // W-9 form submit
-  const w9Form = document.getElementById('employeeW9Form');
   if (w9Form) {
     if (!w9Form.signedDate.value) {
-      w9Form.signedDate.value = new Date().toISOString().slice(0, 10);
+      w9Form.signedDate.value = getTodayIsoDate();
     }
+    syncEmployeeTaxFormSnapshot(w9Form, 'w9');
 
     w9Form.addEventListener('submit', async (event) => {
       event.preventDefault();
       const msg = document.getElementById('employeeW9Message');
       hideMessage(msg);
 
-      const classification = w9Form.taxClassification.value;
-      const payload = {
-        name: w9Form.name.value.trim(),
-        businessName: w9Form.businessName.value.trim(),
-        taxClassification: classification,
-        llcType: classification === 'llc' ? (w9Form.llcType ? w9Form.llcType.value : '') : '',
-        otherClassification: classification === 'other' ? (w9Form.otherClassification ? w9Form.otherClassification.value.trim() : '') : '',
-        exemptPayeeCode: w9Form.exemptPayeeCode.value.trim(),
-        fatcaExemptionCode: w9Form.fatcaExemptionCode.value.trim(),
-        addressLine: w9Form.addressLine.value.trim(),
-        cityStateZip: w9Form.cityStateZip.value.trim(),
-        tin: w9Form.tin.value.trim(),
-        signatureName: w9Form.signatureName.value.trim(),
-        signedDate: w9Form.signedDate.value,
-      };
+      const payload = buildEmployeeW9Payload(w9Form);
+      const classification = payload.taxClassification;
 
       if (!payload.name || !payload.taxClassification || !payload.tin || !payload.signatureName || !payload.signedDate) {
         setMessage(msg, 'Name, tax classification, TIN, signature name, and signed date are required.', 'error');
@@ -7918,6 +8111,26 @@ function bindEmployeeForms(currentUser) {
       setMessage(msg, 'W-9 information saved successfully.', 'success');
       await loadEmployeeDashboard(currentUser);
     });
+
+    const clearW9Btn = document.getElementById('employeeW9ClearBtn');
+    if (clearW9Btn) {
+      clearW9Btn.addEventListener('click', async () => {
+        const msg = document.getElementById('employeeW9Message');
+        hideMessage(msg);
+        const confirmed = window.confirm('Clear your saved W-9 form and reset this form?');
+        if (!confirmed) return;
+
+        const res = await apiFetch('/api/portal/employee/w9', { method: 'DELETE' });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          setMessage(msg, data.error || 'Failed to clear W-9 information.', 'error');
+          return;
+        }
+
+        setMessage(msg, 'W-9 information cleared.', 'success');
+        await loadEmployeeDashboard(currentUser);
+      });
+    }
   }
 
   // SSN form
@@ -10111,6 +10324,24 @@ function bindAdminForms(currentUser) {
         } finally {
           ssnViewBtn.disabled = false;
         }
+        return;
+      }
+
+      const taxDetailBtn = event.target.closest('[data-tax-form-details]');
+      if (taxDetailBtn) {
+        const formType = String(taxDetailBtn.dataset.taxFormDetails || '').trim().toLowerCase();
+        renderAdminTaxFormDetail(formType);
+        return;
+      }
+
+      const taxDetailCloseBtn = event.target.closest('#adminTaxFormDetailCloseBtn');
+      if (taxDetailCloseBtn) {
+        const panel = document.getElementById('adminTaxFormDetailPanel');
+        const body = document.getElementById('adminTaxFormDetailBody');
+        const detailMsg = document.getElementById('adminTaxFormDetailMessage');
+        if (panel) panel.hidden = true;
+        if (body) body.innerHTML = '';
+        if (detailMsg) setMessage(detailMsg, 'Select a tax form to review.', 'neutral');
         return;
       }
 

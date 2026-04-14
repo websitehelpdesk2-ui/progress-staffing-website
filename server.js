@@ -8798,11 +8798,17 @@ app.post('/api/portal/employee/w4', authGuard(['employee']), (req, res) => {
     signedDate,
   } = req.body;
 
-  if (!legalName || !signatureName || !signedDate) {
+  const normalizedLegalName = normalizeSingleLineText(legalName, 160);
+  const normalizedSignatureName = normalizeSingleLineText(signatureName, 160);
+  const normalizedAddressLine = addressLine ? normalizeSingleLineText(addressLine, 255) : null;
+  const normalizedCityStateZip = cityStateZip ? normalizeSingleLineText(cityStateZip, 160) : null;
+  const normalizedSignedDate = String(signedDate || '').trim();
+
+  if (!normalizedLegalName || !normalizedSignatureName || !normalizedSignedDate) {
     return res.status(400).json({ error: 'legalName, signatureName, and signedDate are required.' });
   }
 
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(signedDate))) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalizedSignedDate)) {
     return res.status(400).json({ error: 'signedDate must be in YYYY-MM-DD format.' });
   }
 
@@ -8852,20 +8858,25 @@ app.post('/api/portal/employee/w4', authGuard(['employee']), (req, res) => {
 
   upsert.run(
     req.auth.id,
-    String(legalName).trim(),
-    addressLine ? String(addressLine).trim() : null,
-    cityStateZip ? String(cityStateZip).trim() : null,
+    normalizedLegalName,
+    normalizedAddressLine,
+    normalizedCityStateZip,
     normalizedFilingStatus,
     isTruthy(multipleJobs) ? 1 : 0,
     numericOrNull(dependentsAmount),
     numericOrNull(otherIncome),
     numericOrNull(deductions),
     numericOrNull(extraWithholding),
-    String(signatureName).trim(),
-    String(signedDate).trim()
+    normalizedSignatureName,
+    normalizedSignedDate
   );
 
   return res.json({ updated: true });
+});
+
+app.delete('/api/portal/employee/w4', authGuard(['employee']), (req, res) => {
+  db.prepare('DELETE FROM employee_w4_forms WHERE userId = ?').run(req.auth.id);
+  return res.json({ cleared: true });
 });
 
 app.post('/api/portal/employee/w9', authGuard(['employee']), (req, res) => {
@@ -8884,11 +8895,21 @@ app.post('/api/portal/employee/w9', authGuard(['employee']), (req, res) => {
     signedDate,
   } = req.body;
 
-  if (!name || !taxClassification || !tin || !signatureName || !signedDate) {
+  const normalizedName = normalizeSingleLineText(name, 160);
+  const normalizedBusinessName = businessName ? normalizeSingleLineText(businessName, 160) : null;
+  const normalizedSignatureName = normalizeSingleLineText(signatureName, 160);
+  const normalizedAddressLine = addressLine ? normalizeSingleLineText(addressLine, 255) : null;
+  const normalizedCityStateZip = cityStateZip ? normalizeSingleLineText(cityStateZip, 160) : null;
+  const normalizedExemptPayeeCode = exemptPayeeCode ? normalizeSingleLineText(exemptPayeeCode, 50) : null;
+  const normalizedFatcaExemptionCode = fatcaExemptionCode ? normalizeSingleLineText(fatcaExemptionCode, 50) : null;
+  const normalizedOtherClassification = otherClassification ? normalizeSingleLineText(otherClassification, 160) : null;
+  const normalizedSignedDate = String(signedDate || '').trim();
+
+  if (!normalizedName || !taxClassification || !tin || !normalizedSignatureName || !normalizedSignedDate) {
     return res.status(400).json({ error: 'name, taxClassification, tin, signatureName, and signedDate are required.' });
   }
 
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(signedDate))) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalizedSignedDate)) {
     return res.status(400).json({ error: 'signedDate must be in YYYY-MM-DD format.' });
   }
 
@@ -8958,21 +8979,26 @@ app.post('/api/portal/employee/w9', authGuard(['employee']), (req, res) => {
 
   upsert.run(
     req.auth.id,
-    String(name).trim(),
-    businessName ? String(businessName).trim() : null,
+    normalizedName,
+    normalizedBusinessName,
     normalizedClassification,
     llcType ? String(llcType).trim().toUpperCase() : null,
-    otherClassification ? String(otherClassification).trim() : null,
-    exemptPayeeCode ? String(exemptPayeeCode).trim() : null,
-    fatcaExemptionCode ? String(fatcaExemptionCode).trim() : null,
-    addressLine ? String(addressLine).trim() : null,
-    cityStateZip ? String(cityStateZip).trim() : null,
+    normalizedOtherClassification,
+    normalizedExemptPayeeCode,
+    normalizedFatcaExemptionCode,
+    normalizedAddressLine,
+    normalizedCityStateZip,
     tinStr,
-    String(signatureName).trim(),
-    String(signedDate).trim()
+    normalizedSignatureName,
+    normalizedSignedDate
   );
 
   return res.json({ updated: true });
+});
+
+app.delete('/api/portal/employee/w9', authGuard(['employee']), (req, res) => {
+  db.prepare('DELETE FROM employee_w9_forms WHERE userId = ?').run(req.auth.id);
+  return res.json({ cleared: true });
 });
 
 app.post('/api/portal/employee/background-consent', authGuard(['employee']), (req, res) => {
@@ -11610,7 +11636,17 @@ app.get('/api/admin/employees/:id/profile', authGuard(['admin']), (req, res) => 
            id,
            userId,
            legalName,
+           addressLine,
+           cityStateZip,
+           filingStatus,
+           multipleJobs,
+           dependentsAmount,
+           otherIncome,
+           deductions,
+           extraWithholding,
+           signatureName,
            signedDate,
+           createdAt,
            updatedAt
          FROM employee_w4_forms
          WHERE userId = ?
@@ -11625,8 +11661,18 @@ app.get('/api/admin/employees/:id/profile', authGuard(['admin']), (req, res) => 
            id,
            userId,
            name,
+           businessName,
+           taxClassification,
+           llcType,
+           otherClassification,
+           exemptPayeeCode,
+           fatcaExemptionCode,
+           addressLine,
+           cityStateZip,
            tin,
+           signatureName,
            signedDate,
+           createdAt,
            updatedAt
          FROM employee_w9_forms
          WHERE userId = ?

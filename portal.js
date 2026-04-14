@@ -9042,6 +9042,8 @@ async function loadOnboardingEmployeeProfile(employeeId) {
   if (employeeIdField) employeeIdField.value = String(employeeId);
   const bgStatusField = document.getElementById('onboardingBackgroundStatus');
   if (bgStatusField) bgStatusField.value = String(employee.backgroundStatus || 'passed');
+  adminState.selectedEmployeeId = Number(employeeId);
+  adminState.selectedEmployeeDetail = payload;
   onboardingPortalSelectedEmployeeId = Number(employeeId);
 }
 

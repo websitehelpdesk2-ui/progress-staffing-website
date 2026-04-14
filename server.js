@@ -5868,6 +5868,7 @@ app.get('/api/portal/onboarding/employees/:id/profile', authGuard(['admin', 'onb
     }));
 
   const { compliance } = evaluateEmployeeCompliance(employee.id, industry, documents);
+  const requiredUploadedDocumentSet = evaluateRequiredUploadedDocumentSet(industry, documents);
   const backgroundConsentForm = getEmployeeBackgroundConsentForm(employee.id, { includeMeta: true });
   const hipaaComplianceForm = getEmployeeHipaaComplianceForm(employee.id, { includeMeta: true });
   const handbookForm = getEmployeeHandbookForm(employee.id, { includeMeta: true });

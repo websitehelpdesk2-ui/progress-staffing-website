@@ -8677,6 +8677,121 @@ app.post('/api/portal/employee/documents', authGuard(['employee']), (req, res) =
   });
 });
 
+app.post('/api/admin/employees/:employeeId/documents', authGuard(['admin']), (req, res) => {
+  const employeeId = Number(req.params.employeeId);
+
+  if (!Number.isInteger(employeeId) || employeeId < 1) {
+    return res.status(400).json({ error: 'Invalid employee id.' });
+  }
+
+  const employee = db
+    .prepare("SELECT id, name, email FROM users WHERE id = ? AND role = 'employee'")
+    .get(employeeId);
+
+  if (!employee) {
+    return res.status(404).json({ error: 'Employee not found.' });
+  }
+
+  const applications = db
+    .prepare(
+      `SELECT industry
+       FROM applications
+       WHERE userId = ? OR email = ?
+       ORDER BY createdAt DESC`
+    )
+    .all(employee.id, employee.email);
+  const industry = inferIndustryFromApplications(applications);
+  const track = industryToTrack(industry);
+
+  if (!canAdminViewEmployee(req.auth, employeeId, track)) {
+    return res.status(403).json({ error: 'Forbidden - employee is outside your assigned scope.' });
+  }
+
+  upload.single('document')(req, res, async (err) => {
+    if (err) {
+      return res.status(400).json({ error: err.message || 'Failed to upload document.' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'No document file uploaded.' });
+    }
+
+    const documentType = req.body.documentType ? String(req.body.documentType).trim().toLowerCase() : '';
+    const expirationDateRaw = req.body.expirationDate ? String(req.body.expirationDate).trim() : null;
+    const checklistRule = profileForIndustry(industry).find((rule) => String(rule.type || '').trim().toLowerCase() === documentType) || null;
+
+    if (!documentType || !checklistRule) {
+      discardUploadedFile(req.file);
+      return res.status(400).json({ error: 'Document type is not applicable for this employee profile.' });
+    }
+
+    if (!ALLOWED_EMPLOYEE_DOCUMENT_TYPES.has(documentType) || ADMIN_ONLY_DOCUMENT_TYPES.has(documentType)) {
+      discardUploadedFile(req.file);
+      return res.status(400).json({ error: 'Invalid document type.' });
+    }
+
+    if (checklistRule.requiresExpiration) {
+      if (!expirationDateRaw || !/^\d{4}-\d{2}-\d{2}$/.test(expirationDateRaw)) {
+        discardUploadedFile(req.file);
+        return res.status(400).json({ error: 'This document type requires a valid expiration date (YYYY-MM-DD).' });
+      }
+    }
+
+    try {
+      await persistUploadedFile(req.file, 'employee-documents');
+      const info = db
+        .prepare(
+          `INSERT INTO employee_documents
+            (userId, applicationId, documentType, originalName, storedName, mimeType, fileSize, expirationDate, documentStatus, uploadedByUserId, uploadedByRole)
+           VALUES (?, NULL, ?, ?, ?, ?, ?, ?, 'pending', ?, 'admin')`
+        )
+        .run(
+          employeeId,
+          documentType,
+          req.file.originalname,
+          req.file.filename,
+          req.file.mimetype,
+          req.file.size,
+          expirationDateRaw,
+          req.auth.id
+        );
+
+      logAdminAction(
+        req.auth.id,
+        'employee_document_uploaded_for_employee',
+        JSON.stringify({ employeeId, documentId: info.lastInsertRowid, documentType })
+      );
+
+      emitDomainSyncToAdmins(['onboarding', 'full'], ['admin-dashboard', 'documents']);
+
+      runAsyncTask('notify_employee_admin_uploaded_document', () =>
+        Promise.allSettled([
+          Promise.resolve(createPortalNotification({
+            userId: employeeId,
+            actorUserId: req.auth.id,
+            category: 'document',
+            title: 'Document Uploaded to Your Checklist',
+            body: `An administrator uploaded your ${getDocumentTypeLabel(documentType)} document.`,
+            url: buildPortalPath('/portal-employee', { task: 'employee-documents' }),
+            metadata: { documentId: Number(info.lastInsertRowid), documentType },
+            syncDomains: ['employee-dashboard', 'documents'],
+          })),
+        ])
+      );
+
+      return res.status(201).json({
+        id: info.lastInsertRowid,
+        fileUrl: `/api/portal/documents/${info.lastInsertRowid}/file`,
+        documentStatus: 'pending',
+      });
+    } catch (error) {
+      discardUploadedFile(req.file);
+      logCaughtException('admin employee document upload', error, { employeeId, actorUserId: req.auth.id, documentType });
+      return res.status(500).json({ error: 'Failed to store document.' });
+    }
+  });
+});
+
 app.post('/api/admin/employees/:employeeId/background-document', authGuard(['admin']), (req, res) => {
   const employeeId = Number(req.params.employeeId);
 

@@ -142,6 +142,22 @@
         <div class="admin-stack-md">
           <h3 class="admin-subheading">Document Checklist</h3>
           <ul id="adminEmployeeChecklist" class="checklist"></ul>
+          <form id="adminChecklistUploadForm" class="contact-form admin-detail-form" hidden novalidate>
+            <div id="adminChecklistUploadMessage" class="form-message" aria-live="polite"></div>
+            <input id="adminChecklistUploadDocumentType" name="documentType" type="hidden" />
+            <div class="form-row">
+              <label for="adminChecklistUploadFile" id="adminChecklistUploadFileLabel">Upload Employee Document</label>
+              <input id="adminChecklistUploadFile" name="document" type="file" required />
+            </div>
+            <div id="adminChecklistUploadExpirationRow" class="form-row" hidden>
+              <label for="adminChecklistUploadExpirationDate">Expiration Date</label>
+              <input id="adminChecklistUploadExpirationDate" name="expirationDate" type="date" />
+            </div>
+            <div class="form-actions">
+              <button id="adminChecklistUploadSubmitBtn" class="button button--ghost button--sm" type="submit">Upload for Employee</button>
+              <button id="adminChecklistUploadCancelBtn" class="button button--ghost button--sm" type="button">Cancel</button>
+            </div>
+          </form>
         </div>
 
         <div class="admin-stack-lg">

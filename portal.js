@@ -4097,6 +4097,73 @@ function openEmployeeUploadForDocumentType(documentType = '') {
   }
 }
 
+function canAdminUploadChecklistItem(item) {
+  return Boolean(document.getElementById('adminChecklistUploadForm'))
+    && item
+    && item.kind === 'document'
+    && String(item.documentType || '').trim().toLowerCase() !== 'background_check';
+}
+
+function syncAdminChecklistUploadExpirationField(requiresExpiration) {
+  const expirationRow = document.getElementById('adminChecklistUploadExpirationRow');
+  const expirationInput = document.getElementById('adminChecklistUploadExpirationDate');
+  const needsExpiration = Boolean(requiresExpiration);
+
+  if (expirationRow) expirationRow.hidden = !needsExpiration;
+  if (expirationInput) {
+    expirationInput.disabled = !needsExpiration;
+    if (!needsExpiration) expirationInput.value = '';
+  }
+}
+
+function closeAdminChecklistUploadForm(options = {}) {
+  const form = document.getElementById('adminChecklistUploadForm');
+  const message = document.getElementById('adminChecklistUploadMessage');
+  const typeInput = document.getElementById('adminChecklistUploadDocumentType');
+  const label = document.getElementById('adminChecklistUploadFileLabel');
+  const clearMessage = options.clearMessage !== false;
+
+  if (!form) return;
+
+  form.hidden = true;
+  form.reset();
+  form.dataset.requiresExpiration = '0';
+  form.dataset.documentLabel = '';
+  if (typeInput) typeInput.value = '';
+  if (label) label.textContent = 'Upload Employee Document';
+  syncAdminChecklistUploadExpirationField(false);
+  if (clearMessage && message) hideMessage(message);
+}
+
+function openAdminChecklistUploadFormForItem(item) {
+  const form = document.getElementById('adminChecklistUploadForm');
+  const typeInput = document.getElementById('adminChecklistUploadDocumentType');
+  const label = document.getElementById('adminChecklistUploadFileLabel');
+  const fileInput = document.getElementById('adminChecklistUploadFile');
+  const message = document.getElementById('adminChecklistUploadMessage');
+  const documentType = String(item && item.documentType ? item.documentType : '').trim().toLowerCase();
+  const documentLabel = String(item && item.label ? item.label : DOCUMENT_TYPE_LABELS[documentType] || documentType || 'Employee Document').trim();
+  const requiresExpiration = Boolean(item && item.requiresExpiration);
+
+  if (!form || !typeInput || !documentType) return;
+
+  form.reset();
+  form.hidden = false;
+  form.dataset.requiresExpiration = requiresExpiration ? '1' : '0';
+  form.dataset.documentLabel = documentLabel;
+  typeInput.value = documentType;
+  if (label) label.textContent = `Upload ${documentLabel}`;
+  syncAdminChecklistUploadExpirationField(requiresExpiration);
+  if (message) hideMessage(message);
+
+  form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  if (fileInput) {
+    window.setTimeout(() => {
+      fileInput.focus();
+    }, 50);
+  }
+}
+
 function buildPortalTileSummary(section) {
   const explicitSummary = String(section?.dataset?.tileSummary || '').trim();
   if (explicitSummary) return explicitSummary;
@@ -6401,6 +6468,7 @@ function hideAdminEmployeeDetail() {
   if (onboardingDetailPanel) onboardingDetailPanel.hidden = true;
   if (onboardingDetailBody) onboardingDetailBody.innerHTML = '';
   if (onboardingDetailMsg) setMessage(onboardingDetailMsg, 'Select an onboarding form to review.', 'neutral');
+  closeAdminChecklistUploadForm();
 
   setTableRows('adminEmployeeDocuments', [], 6, 'Select an employee to view details.');
   setTableRows('adminEmployeeTaxForms', [], 5, 'Select an employee to view tax forms.');
@@ -6492,9 +6560,11 @@ function renderAdminEmployeeDetail(data) {
     const compliance = data.compliance || {};
     const profileComplete = compliance.isComplete ? 'Complete' : 'Incomplete';
     const onboardingStatus = data.onboardingStatus || (employee.isActive ? 'registered' : 'inactive');
+    const canShowChecklistUpload = Boolean(document.getElementById('adminChecklistUploadForm'));
 
     if (title) title.textContent = `Employee Profile: ${employee.name || 'Unknown Employee'}`;
     if (msg) hideMessage(msg);
+    if (canShowChecklistUpload) closeAdminChecklistUploadForm();
     if (downloadBtn) {
       const canDownloadAllFiles = Boolean(data.requiredUploadedDocumentSetComplete) && Number.isInteger(asInt(employee.id));
       downloadBtn.hidden = !canDownloadAllFiles;
@@ -6553,10 +6623,13 @@ function renderAdminEmployeeDetail(data) {
         const viewButton = viewUrl
           ? `<button class="button button--ghost button--sm" type="button" data-checklist-view-url="${escapeHtml(viewUrl)}" style="margin-left:0.5rem;">View Document</button>`
           : `<button class="button button--ghost button--sm" type="button" disabled style="margin-left:0.5rem;">View Document</button>`;
+        const uploadButton = canShowChecklistUpload && canAdminUploadChecklistItem(item)
+          ? `<button class="button button--ghost button--sm" type="button" data-admin-checklist-upload-type="${escapeHtml(item.documentType)}" data-admin-checklist-upload-label="${escapeHtml(label)}" data-admin-checklist-upload-expiration="${item.requiresExpiration ? '1' : '0'}" style="margin-left:0.5rem;">Upload</button>`
+          : '';
         const remindButton = (item.required && (item.missingRequired || item.pendingApproval || item.missingExpiration))
           ? `<button class="button button--ghost button--sm" type="button" data-remind-doc-type="${escapeHtml(item.documentType)}" data-remind-employee-id="${escapeHtml(adminState.selectedEmployeeId)}" style="margin-left:0.5rem;">Send Reminder</button>`
           : '';
-        return `<li><span>${escapeHtml(label)}</span><span>${badge}${viewButton}${remindButton}</span></li>`;
+        return `<li><span>${escapeHtml(label)}</span><span>${badge}${viewButton}${uploadButton}${remindButton}</span></li>`;
       })
       .join('');
   } else {
@@ -10181,6 +10254,8 @@ function bindAdminForms(currentUser) {
   const closeEmployeeDetailBtn = document.getElementById('adminEmployeeDetailCloseBtn');
   const backgroundSaveBtn = document.getElementById('adminEmployeeBackgroundSaveBtn');
   const backgroundUploadForm = document.getElementById('adminBackgroundUploadForm');
+  const checklistUploadForm = document.getElementById('adminChecklistUploadForm');
+  const checklistUploadCancelBtn = document.getElementById('adminChecklistUploadCancelBtn');
   const downloadAllFilesBtn = document.getElementById('adminEmployeeDownloadAllFilesBtn');
 
   if (closeEmployeeDetailBtn) {
@@ -10282,6 +10357,80 @@ function bindAdminForms(currentUser) {
     });
   }
 
+  if (checklistUploadCancelBtn) {
+    checklistUploadCancelBtn.addEventListener('click', () => {
+      closeAdminChecklistUploadForm();
+    });
+  }
+
+  if (checklistUploadForm) {
+    checklistUploadForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const employeeId = adminState.selectedEmployeeId;
+      const msg = document.getElementById('adminChecklistUploadMessage');
+      const uploadBtn = document.getElementById('adminChecklistUploadSubmitBtn');
+      const typeInput = document.getElementById('adminChecklistUploadDocumentType');
+      const expirationInput = document.getElementById('adminChecklistUploadExpirationDate');
+      hideMessage(msg);
+
+      if (!Number.isInteger(employeeId) || employeeId < 1) {
+        setMessage(msg, 'Select an employee profile first.', 'error');
+        return;
+      }
+
+      const documentType = String(typeInput?.value || '').trim().toLowerCase();
+      if (!documentType) {
+        setMessage(msg, 'Choose a checklist item before uploading.', 'error');
+        return;
+      }
+
+      const fileInput = checklistUploadForm.document;
+      const file = fileInput && fileInput.files ? fileInput.files[0] : null;
+      if (!file) {
+        setMessage(msg, 'Please choose a document to upload.', 'error');
+        return;
+      }
+
+      const requiresExpiration = checklistUploadForm.dataset.requiresExpiration === '1';
+      const expirationDate = String(expirationInput?.value || '').trim();
+      if (requiresExpiration && !expirationDate) {
+        setMessage(msg, 'This checklist item requires an expiration date.', 'error');
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('documentType', documentType);
+      formData.append('document', file);
+      if (expirationDate) formData.append('expirationDate', expirationDate);
+
+      uploadBtn.disabled = true;
+      const previousText = uploadBtn.textContent;
+      uploadBtn.textContent = 'Uploading...';
+
+      try {
+        const res = await apiFetch(`/api/admin/employees/${employeeId}/documents`, {
+          method: 'POST',
+          body: formData,
+        });
+
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setMessage(msg, payload.error || 'Failed to upload employee document.', 'error');
+          return;
+        }
+
+        closeAdminChecklistUploadForm();
+        await loadAdminDashboard(currentUser);
+        await loadAdminEmployeeDetail(employeeId);
+        const detailMsg = document.getElementById('adminEmployeeDetailMessage');
+        setMessage(detailMsg, 'Employee document uploaded successfully.', 'success');
+      } finally {
+        uploadBtn.disabled = false;
+        uploadBtn.textContent = previousText;
+      }
+    });
+  }
+
   if (downloadAllFilesBtn && downloadAllFilesBtn.dataset.bound !== '1') {
     downloadAllFilesBtn.dataset.bound = '1';
     downloadAllFilesBtn.addEventListener('click', () => {
@@ -10298,6 +10447,16 @@ function bindAdminForms(currentUser) {
       if (checklistViewBtn) {
         const fileUrl = String(checklistViewBtn.dataset.checklistViewUrl || '').trim();
         if (fileUrl) window.open(fileUrl, '_blank', 'noopener');
+        return;
+      }
+
+      const checklistUploadBtn = event.target.closest('[data-admin-checklist-upload-type]');
+      if (checklistUploadBtn) {
+        openAdminChecklistUploadFormForItem({
+          documentType: checklistUploadBtn.dataset.adminChecklistUploadType,
+          label: checklistUploadBtn.dataset.adminChecklistUploadLabel,
+          requiresExpiration: checklistUploadBtn.dataset.adminChecklistUploadExpiration === '1',
+        });
         return;
       }
 

@@ -2528,7 +2528,7 @@ async function notifyAdminsAboutDocumentUpload(employeeUserId, docId, documentTy
           taskType: 'document_review',
           taskRefId: docId,
           metadata: { employeeId: employeeUserId, docId, documentType },
-          syncDomains: ['admin-dashboard'],
+          syncDomains: ['admin-dashboard', 'documents'],
         },
         email: {
           to: admin.email,
@@ -11737,6 +11737,7 @@ app.get('/api/admin/employees/:id/profile', authGuard(['admin']), (req, res) => 
     }));
 
   const { compliance } = evaluateEmployeeCompliance(employee.id, industry, documents);
+  const requiredUploadedDocumentSet = evaluateRequiredUploadedDocumentSet(industry, documents);
   const backgroundConsentForm = getEmployeeBackgroundConsentForm(employee.id, { includeMeta: true });
   const hipaaComplianceForm = getEmployeeHipaaComplianceForm(employee.id, { includeMeta: true });
   const handbookForm = getEmployeeHandbookForm(employee.id, { includeMeta: true });
@@ -11801,6 +11802,8 @@ app.get('/api/admin/employees/:id/profile', authGuard(['admin']), (req, res) => 
     applications,
     documents,
     compliance,
+    requiredUploadedDocumentSetComplete: requiredUploadedDocumentSet.complete,
+    requiredUploadedDocumentSetMissing: requiredUploadedDocumentSet.missingTypes,
     onboardingStatus,
     ssnOnFile: Boolean(ssnRow && ssnRow.ssnEncrypted),
     w4Form,

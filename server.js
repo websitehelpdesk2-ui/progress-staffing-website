@@ -8744,7 +8744,7 @@ app.post('/api/admin/employees/:employeeId/documents', authGuard(['admin']), (re
         .prepare(
           `INSERT INTO employee_documents
             (userId, applicationId, documentType, originalName, storedName, mimeType, fileSize, expirationDate, documentStatus, uploadedByUserId, uploadedByRole)
-           VALUES (?, NULL, ?, ?, ?, ?, ?, ?, 'pending', ?, 'admin')`
+           VALUES (?, NULL, ?, ?, ?, ?, ?, ?, 'approved', ?, 'admin')`
         )
         .run(
           employeeId,
@@ -8783,7 +8783,7 @@ app.post('/api/admin/employees/:employeeId/documents', authGuard(['admin']), (re
       return res.status(201).json({
         id: info.lastInsertRowid,
         fileUrl: `/api/portal/documents/${info.lastInsertRowid}/file`,
-        documentStatus: 'pending',
+        documentStatus: 'approved',
       });
     } catch (error) {
       discardUploadedFile(req.file);

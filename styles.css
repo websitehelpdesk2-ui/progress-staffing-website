@@ -360,6 +360,15 @@ a {
   border-color: rgba(15, 125, 25, 0.6);
 }
 
+#services .card {
+  transition: none;
+}
+
+#services .card:hover {
+  transform: none;
+  border-color: rgba(10, 70, 40, 0.55);
+}
+
 .card h3 {
   margin: 0 0 0.75rem;
   font-size: 1.25rem;

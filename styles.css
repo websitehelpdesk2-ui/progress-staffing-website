@@ -187,7 +187,7 @@ a {
 }
 
 .hero-title-logo {
-  width: 520px;
+  width: 580px;
   max-width: 100%;
   display: block;
   margin-bottom: 0;
@@ -202,7 +202,7 @@ a {
 }
 
 .hero-copy h1 {
-  font-size: clamp(2.1rem, 3.6vw, 3.25rem);
+  font-size: clamp(1.95rem, 3.1vw, 2.9rem);
   margin: 0 0 1rem;
   letter-spacing: -0.01em;
 }

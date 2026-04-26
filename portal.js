@@ -790,6 +790,10 @@ const EMPLOYEE_REGISTRATION_OPTIONS = {
     { industry: 'warehouse', position: 'Material Handler' },
     { industry: 'warehouse', position: 'Pick / Pack Specialist' },
     { industry: 'warehouse', position: 'Inventory Control' },
+    { industry: 'warehouse', position: 'Loader / Unloader' },
+    { industry: 'warehouse', position: 'Returns Specialist (Reverse Logistics)' },
+    { industry: 'warehouse', position: 'Maintenance Technician' },
+    { industry: 'warehouse', position: 'Order Selector / Puller' },
   ],
   healthcare: [
     { industry: 'cna', position: 'Certified Nursing Assistant (CNA)' },
@@ -815,6 +819,10 @@ const JOBSITE_TRACK_TITLE_OPTIONS = {
     { value: 'Material Handler', label: 'Material Handler' },
     { value: 'Pick / Pack Specialist', label: 'Pick / Pack Specialist' },
     { value: 'Inventory Control', label: 'Inventory Control' },
+    { value: 'Loader / Unloader', label: 'Loader / Unloader' },
+    { value: 'Returns Specialist (Reverse Logistics)', label: 'Returns Specialist (Reverse Logistics)' },
+    { value: 'Maintenance Technician', label: 'Maintenance Technician' },
+    { value: 'Order Selector / Puller', label: 'Order Selector / Puller' },
   ],
   healthcare: [
     { value: 'Certified Nursing Assistant (CNA)', label: 'Certified Nursing Assistant (CNA)' },

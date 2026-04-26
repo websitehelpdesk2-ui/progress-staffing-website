@@ -386,6 +386,7 @@ a {
   border-radius: var(--radius);
   background: rgba(0, 60, 30, 0.55);
   border: 1px solid rgba(10, 70, 40, 0.55);
+  box-shadow: 0 30px 48px rgba(0, 0, 0, 0.35);
   color: rgba(235, 245, 236, 0.9);
 }
 

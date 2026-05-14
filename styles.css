@@ -182,8 +182,7 @@ a {
   content: "";
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle at 22% 28%, rgba(19, 45, 30, 0.24), transparent 52%),
-    linear-gradient(140deg, rgba(240, 243, 231, 0.45), rgba(223, 231, 214, 0.35));
+  background: linear-gradient(140deg, rgba(240, 243, 231, 0.24), rgba(223, 231, 214, 0.2));
 }
 
 .hero-inner {

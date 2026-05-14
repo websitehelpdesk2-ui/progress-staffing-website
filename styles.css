@@ -153,10 +153,6 @@ a {
 
 .hero {
   position: relative;
-  width: 100vw;
-  max-width: none;
-  margin-left: calc(50% - 50vw);
-  margin-right: calc(50% - 50vw);
   padding: 4.5rem 0 3rem;
   overflow: hidden;
 }
@@ -164,36 +160,25 @@ a {
 .hero-backdrop {
   position: absolute;
   inset: 0;
-  width: 100%;
-  height: 100%;
-  z-index: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   overflow: hidden;
   pointer-events: none;
   opacity: 1;
-  background: linear-gradient(140deg, rgba(240, 243, 231, 0.9), rgba(223, 231, 214, 0.68));
-}
-
-.hero-backdrop video {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: center 72%;
-  z-index: 0;
-  transform: scale(1.12);
+  background: radial-gradient(circle at 22% 28%, rgba(110, 163, 110, 0.33), transparent 52%),
+    linear-gradient(140deg, rgba(240, 243, 231, 0.9), rgba(223, 231, 214, 0.68));
 }
 
 .hero-backdrop::after {
   content: "";
   position: absolute;
   inset: 0;
-  background: rgba(233, 239, 228, 0.2);
+  background: transparent;
 }
 
 .hero-inner {
   position: relative;
-  z-index: 1;
   display: grid;
   gap: 2.5rem;
   align-items: start;

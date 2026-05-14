@@ -699,6 +699,19 @@ a {
   color: rgba(255, 255, 255, 0.95);
 }
 
+.footer-map {
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-start;
+}
+
+.footer-map iframe {
+  width: min(100%, 400px);
+  max-width: 100%;
+  height: 300px;
+  border-radius: 12px;
+}
+
 .footer-copy {
   margin-top: 2rem;
   text-align: center;
@@ -3675,6 +3688,10 @@ body.theme-dark a {
 
   .footer-inner {
     gap: 1.25rem;
+  }
+
+  .footer-map {
+    justify-content: flex-start;
   }
 }
 

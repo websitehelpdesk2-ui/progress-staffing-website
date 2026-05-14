@@ -181,7 +181,7 @@ a {
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(140deg, rgba(240, 243, 231, 0.24), rgba(223, 231, 214, 0.2));
+  background: linear-gradient(140deg, rgba(239, 243, 232, 0.48), rgba(224, 232, 216, 0.38));
 }
 
 .hero-inner {

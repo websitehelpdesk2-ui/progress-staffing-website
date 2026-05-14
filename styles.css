@@ -160,13 +160,26 @@ a {
 .hero-backdrop {
   position: absolute;
   inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  overflow: hidden;
   pointer-events: none;
   opacity: 1;
-  background: radial-gradient(circle at 22% 28%, rgba(110, 163, 110, 0.33), transparent 52%),
-    linear-gradient(140deg, rgba(240, 243, 231, 0.9), rgba(223, 231, 214, 0.68));
+  background: linear-gradient(140deg, rgba(240, 243, 231, 0.9), rgba(223, 231, 214, 0.68));
+}
+
+.hero-backdrop video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.hero-backdrop::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 22% 28%, rgba(19, 45, 30, 0.24), transparent 52%),
+    linear-gradient(140deg, rgba(240, 243, 231, 0.45), rgba(223, 231, 214, 0.35));
 }
 
 .hero-inner {

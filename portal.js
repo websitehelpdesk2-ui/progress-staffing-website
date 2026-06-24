@@ -11611,6 +11611,21 @@ function bindAdminContractDrawers() {
   syncWarehouseSendState();
   syncHealthcareSendState();
 
+  if (!adminState.contractsBank || !adminState.contractsBank.length) {
+    loadAdminContractsBank().then((items) => {
+      adminState.contractsBank = Array.isArray(items) ? items : [];
+      renderWarehouseBankOptions();
+      renderHealthcareBankOptions();
+      syncWarehouseSendState();
+      syncHealthcareSendState();
+    }).catch(() => {});
+  } else {
+    renderWarehouseBankOptions();
+    renderHealthcareBankOptions();
+    syncWarehouseSendState();
+    syncHealthcareSendState();
+  }
+
   const openContractSection = async (sectionId) => {
     const section = document.getElementById(sectionId);
     if (!section) return;

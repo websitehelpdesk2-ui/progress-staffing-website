@@ -12629,11 +12629,17 @@ app.patch('/api/admin/contracts/:id/industry-track', authGuard(['admin']), (req,
 app.post('/api/admin/contracts', authGuard(['admin']), upload.array('contract', 20), (req, res) => {
   const industryTrack = String(req.body && req.body.industryTrack || '').trim().toLowerCase();
   const jobsiteUserId = Number(req.body && req.body.jobsiteUserId);
+  const bankContractId = Number(req.body && req.body.bankContractId);
+  const hasBankContractId = Number.isInteger(bankContractId) && bankContractId > 0;
   const files = Array.isArray(req.files) ? req.files : [];
   const removeUploadedFiles = () => discardUploadedFiles(files);
 
-  if (!files.length) {
-    return res.status(400).json({ error: 'Contract PDF is required.' });
+  if (!hasBankContractId && !files.length) {
+    return res.status(400).json({ error: 'Contract PDF or bank contract is required.' });
+  }
+  if (hasBankContractId && files.length) {
+    removeUploadedFiles();
+    return res.status(400).json({ error: 'Choose either a bank contract or uploaded file(s), not both.' });
   }
   if (!['warehouse', 'healthcare'].includes(industryTrack)) {
     removeUploadedFiles();
@@ -12672,6 +12678,47 @@ app.post('/api/admin/contracts', authGuard(['admin']), upload.array('contract', 
   );
 
   const createdIds = [];
+
+  if (hasBankContractId) {
+    const bankEntry = db.prepare('SELECT * FROM contract_bank WHERE id = ?').get(bankContractId);
+    if (!bankEntry) {
+      return res.status(404).json({ error: 'Selected bank contract not found.' });
+    }
+
+    const bankTrack = String(bankEntry.industryTrack || '').trim().toLowerCase();
+    if (bankTrack !== industryTrack) {
+      return res.status(400).json({ error: 'Selected bank contract does not match the chosen industry track.' });
+    }
+
+    const result = insertContract.run(
+      industryTrack,
+      jobsiteUserId,
+      req.auth.id,
+      bankEntry.originalName,
+      bankEntry.storedName,
+      bankEntry.mimeType,
+      bankEntry.fileSize,
+      nowIso,
+      nowIso
+    );
+
+    const contractId = Number(result.lastInsertRowid);
+    runAsyncTask('notify_jobsite_contract_available', () =>
+      notifyJobsiteAboutContractAvailable(jobsiteUserId, contractId, bankEntry.originalName || 'Contract', industryTrack, req.auth.id)
+    );
+
+    emitContractsDomainSyncToAdmins();
+
+    return res.status(201).json({
+      id: contractId,
+      ids: [contractId],
+      created: true,
+      count: 1,
+      source: 'contract-bank',
+      bankContractId,
+    });
+  }
+
   const insertMany = db.transaction((uploadedFiles) => {
     uploadedFiles.forEach((file) => {
       const result = insertContract.run(

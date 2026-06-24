@@ -11485,6 +11485,8 @@ function bindAdminContractDrawers() {
 
   const warehouseFileInput = document.getElementById('adminContractsWarehouseFile');
   const healthcareFileInput = document.getElementById('adminContractsHealthcareFile');
+  const warehouseBankSelect = document.getElementById('adminContractsWarehouseBankId');
+  const healthcareBankSelect = document.getElementById('adminContractsHealthcareBankId');
   const warehouseSendBtn = document.getElementById('adminContractsWarehouseSendBtn');
   const healthcareSendBtn = document.getElementById('adminContractsHealthcareSendBtn');
 
@@ -11528,8 +11530,86 @@ function bindAdminContractDrawers() {
     syncState();
   };
 
+  const renderBankOptions = (selectEl, track) => {
+    if (!selectEl) return;
+    const currentValue = String(selectEl.value || '').trim();
+    const items = (adminState.contractsBank || [])
+      .filter((item) => String(item.industryTrack || '').trim().toLowerCase() === track);
+    const options = items.map((item) => {
+      const itemId = Number(item.id);
+      const label = item.originalName || `Contract #${itemId}`;
+      return `<option value="${escapeHtml(itemId)}">${escapeHtml(label)}</option>`;
+    }).join('');
+
+    selectEl.innerHTML = '<option value="">Upload from device (no bank contract selected)</option>' + options;
+    if (currentValue && items.some((item) => String(item.id) === currentValue)) {
+      selectEl.value = currentValue;
+    }
+  };
+
+  const renderWarehouseBankOptions = () => renderBankOptions(warehouseBankSelect, 'warehouse');
+  const renderHealthcareBankOptions = () => renderBankOptions(healthcareBankSelect, 'healthcare');
+
+  const syncWarehouseSendState = () => {
+    if (!warehouseSendBtn) return;
+    const hasFile = Boolean(warehouseFileInput && warehouseFileInput.files && warehouseFileInput.files.length > 0);
+    const selectedBankId = warehouseBankSelect ? String(warehouseBankSelect.value || '').trim() : '';
+    warehouseSendBtn.disabled = !(hasFile || selectedBankId);
+  };
+
+  const syncHealthcareSendState = () => {
+    if (!healthcareSendBtn) return;
+    const hasFile = Boolean(healthcareFileInput && healthcareFileInput.files && healthcareFileInput.files.length > 0);
+    const selectedBankId = healthcareBankSelect ? String(healthcareBankSelect.value || '').trim() : '';
+    healthcareSendBtn.disabled = !(hasFile || selectedBankId);
+  };
+
   bindSendGate(warehouseFileInput, warehouseSendBtn);
-  bindSendGate(healthcareFileInput, healthcareSendBtn);
+
+  if (warehouseFileInput && warehouseFileInput.dataset.sourceGateBound !== '1') {
+    warehouseFileInput.dataset.sourceGateBound = '1';
+    warehouseFileInput.addEventListener('change', () => {
+      if (warehouseFileInput.files && warehouseFileInput.files.length > 0 && warehouseBankSelect) {
+        warehouseBankSelect.value = '';
+      }
+      syncWarehouseSendState();
+    });
+  }
+
+  if (warehouseBankSelect && warehouseBankSelect.dataset.sourceGateBound !== '1') {
+    warehouseBankSelect.dataset.sourceGateBound = '1';
+    warehouseBankSelect.addEventListener('change', () => {
+      const selectedBankId = String(warehouseBankSelect.value || '').trim();
+      if (selectedBankId && warehouseFileInput) {
+        warehouseFileInput.value = '';
+      }
+      syncWarehouseSendState();
+    });
+  }
+
+  if (healthcareFileInput && healthcareFileInput.dataset.sourceGateBound !== '1') {
+    healthcareFileInput.dataset.sourceGateBound = '1';
+    healthcareFileInput.addEventListener('change', () => {
+      if (healthcareFileInput.files && healthcareFileInput.files.length > 0 && healthcareBankSelect) {
+        healthcareBankSelect.value = '';
+      }
+      syncHealthcareSendState();
+    });
+  }
+
+  if (healthcareBankSelect && healthcareBankSelect.dataset.sourceGateBound !== '1') {
+    healthcareBankSelect.dataset.sourceGateBound = '1';
+    healthcareBankSelect.addEventListener('change', () => {
+      const selectedBankId = String(healthcareBankSelect.value || '').trim();
+      if (selectedBankId && healthcareFileInput) {
+        healthcareFileInput.value = '';
+      }
+      syncHealthcareSendState();
+    });
+  }
+
+  syncWarehouseSendState();
+  syncHealthcareSendState();
 
   const openContractSection = async (sectionId) => {
     const section = document.getElementById(sectionId);
@@ -11538,12 +11618,18 @@ function bindAdminContractDrawers() {
     if (sectionId === 'adminContractsWarehouseSection') {
       populateContractClientSelect('adminContractsWarehouseClient', 'warehouse');
       adminState.contractsWarehouse = await loadAdminContracts('warehouse');
+      adminState.contractsBank = await loadAdminContractsBank();
+      renderWarehouseBankOptions();
+      syncWarehouseSendState();
       renderAdminContractsTable('adminContractsWarehouseTbody', adminState.contractsWarehouse);
     }
 
     if (sectionId === 'adminContractsHealthcareSection') {
       populateContractClientSelect('adminContractsHealthcareClient', 'healthcare');
       adminState.contractsHealthcare = await loadAdminContracts('healthcare');
+      adminState.contractsBank = await loadAdminContractsBank();
+      renderHealthcareBankOptions();
+      syncHealthcareSendState();
       renderAdminContractsTable('adminContractsHealthcareTbody', adminState.contractsHealthcare);
     }
 
@@ -11574,6 +11660,24 @@ function bindAdminContractDrawers() {
     const formData = new FormData(form);
     formData.append('industryTrack', track);
 
+    const trackBankSelect = track === 'warehouse' ? warehouseBankSelect : healthcareBankSelect;
+    const trackFileInput = track === 'warehouse' ? warehouseFileInput : healthcareFileInput;
+    const selectedBankId = trackBankSelect ? asInt(trackBankSelect.value) : null;
+    const selectedFiles = trackFileInput ? Array.from(trackFileInput.files || []) : [];
+
+    if (track === 'warehouse' || track === 'healthcare') {
+      if (Number.isInteger(selectedBankId) && selectedBankId > 0) {
+        formData.delete('contract');
+        formData.set('bankContractId', String(selectedBankId));
+      } else {
+        formData.delete('bankContractId');
+        if (selectedFiles.length < 1) {
+          setMessage(messageEl, 'Select a bank contract or upload at least one file.', 'error');
+          return;
+        }
+      }
+    }
+
     const res = await apiFetch('/api/admin/contracts', {
       method: 'POST',
       body: formData,
@@ -11594,18 +11698,26 @@ function bindAdminContractDrawers() {
     if (track === 'warehouse') {
       adminState.contractsAll = await loadAdminContracts();
       adminState.contractsWarehouse = await loadAdminContracts('warehouse');
+      adminState.contractsBank = await loadAdminContractsBank();
+      renderWarehouseBankOptions();
       renderAdminContractsTable('adminContractsAllTbody', adminState.contractsAll);
       renderAdminContractsTable('adminContractsWarehouseTbody', adminState.contractsWarehouse);
-      if (warehouseSendBtn) warehouseSendBtn.disabled = true;
+      syncWarehouseSendState();
     } else {
       adminState.contractsAll = await loadAdminContracts();
       adminState.contractsHealthcare = await loadAdminContracts('healthcare');
+      adminState.contractsBank = await loadAdminContractsBank();
+      renderHealthcareBankOptions();
       renderAdminContractsTable('adminContractsAllTbody', adminState.contractsAll);
       renderAdminContractsTable('adminContractsHealthcareTbody', adminState.contractsHealthcare);
-      if (healthcareSendBtn) healthcareSendBtn.disabled = true;
+      syncHealthcareSendState();
     }
     adminState.contractsBank = await loadAdminContractsBank();
     renderAdminContractsBankTable(adminState.contractsBank);
+    renderWarehouseBankOptions();
+    syncWarehouseSendState();
+    renderHealthcareBankOptions();
+    syncHealthcareSendState();
   };
 
   const bindReviewTable = (tbody) => {
@@ -11698,6 +11810,10 @@ function bindAdminContractDrawers() {
 
       adminState.contractsBank = await loadAdminContractsBank();
       renderAdminContractsBankTable(adminState.contractsBank);
+      renderWarehouseBankOptions();
+      syncWarehouseSendState();
+      renderHealthcareBankOptions();
+      syncHealthcareSendState();
     });
 
     syncBankUploadUi();
@@ -11720,6 +11836,10 @@ function bindAdminContractDrawers() {
       }
       adminState.contractsBank = await loadAdminContractsBank();
       renderAdminContractsBankTable(adminState.contractsBank);
+      renderWarehouseBankOptions();
+      syncWarehouseSendState();
+      renderHealthcareBankOptions();
+      syncHealthcareSendState();
     });
   }
 

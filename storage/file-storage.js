@@ -193,25 +193,40 @@ async function deleteStoredFile(storageKey) {
 
 async function sendStoredFile(res, storageKey, options = {}) {
   ensureStorageReady();
+  console.log('[sendStoredFile] start', { storageKey, backend: storageBackend, hasContentType: !!options.contentType });
   const normalizedKey = String(storageKey || '').trim();
   if (!normalizedKey) {
     const error = new Error('Stored file not found.');
     error.code = 'ENOENT';
+    console.error('[sendStoredFile] empty key error');
     throw error;
   }
 
   const contentType = String(options.contentType || '').trim();
   const disposition = String(options.disposition || 'attachment').trim().toLowerCase() === 'inline' ? 'inline' : 'attachment';
-  res.setHeader('Content-Disposition', buildContentDisposition(disposition, options.downloadName));
+  
+  try {
+    const dispositionHeader = buildContentDisposition(disposition, options.downloadName);
+    console.log('[sendStoredFile] setting disposition header', { disposition, downloadName: options.downloadName, header: dispositionHeader });
+    res.setHeader('Content-Disposition', dispositionHeader);
+  } catch (headerError) {
+    console.error('[sendStoredFile] disposition header error', headerError);
+    throw headerError;
+  }
+  
   if (contentType) {
+    console.log('[sendStoredFile] setting content-type', { contentType });
     res.type(contentType);
   }
 
   if (storageBackend === 's3') {
+    console.log('[sendStoredFile] s3 backend - fetching object');
     const response = await s3Client.send(new GetObjectCommand({
       Bucket: s3Bucket,
       Key: normalizedKey,
     }));
+    console.log('[sendStoredFile] s3 object received', { contentLength: response.ContentLength, responseContentType: response.ContentType });
+    
     if (!contentType && response.ContentType) {
       res.type(response.ContentType);
     }
@@ -221,26 +236,72 @@ async function sendStoredFile(res, storageKey, options = {}) {
 
     await new Promise((resolve, reject) => {
       const body = response.Body;
+      console.log('[sendStoredFile] s3 stream - validating body');
       if (!body || typeof body.pipe !== 'function') {
-        reject(new Error('Stored file body stream is unavailable.'));
+        const err = new Error('Stored file body stream is unavailable.');
+        console.error('[sendStoredFile] s3 body invalid', err);
+        reject(err);
         return;
       }
-      body.on('error', reject);
-      res.on('error', reject);
-      res.on('finish', resolve);
+      
+      const handleBodyError = (error) => {
+        console.error('[sendStoredFile] s3 body stream error', error);
+        stream.destroy();
+        reject(error);
+      };
+      const handleResError = (error) => {
+        console.error('[sendStoredFile] s3 response stream error', error);
+        body.destroy();
+        reject(error);
+      };
+      const handleFinish = () => {
+        console.log('[sendStoredFile] s3 stream finish');
+        body.removeListener('error', handleBodyError);
+        res.removeListener('error', handleResError);
+        resolve();
+      };
+      
+      body.on('error', handleBodyError);
+      res.on('error', handleResError);
+      res.on('finish', handleFinish);
+      console.log('[sendStoredFile] s3 piping body to response');
       body.pipe(res);
     });
+    console.log('[sendStoredFile] s3 streaming complete');
     return;
   }
 
   const fullPath = resolveStoredFilePath(normalizedKey);
+  console.log('[sendStoredFile] local backend - reading from', fullPath);
   await new Promise((resolve, reject) => {
     const stream = fs.createReadStream(fullPath);
-    stream.on('error', reject);
-    res.on('error', reject);
-    res.on('finish', resolve);
+    console.log('[sendStoredFile] local stream created');
+    
+    const handleStreamError = (error) => {
+      console.error('[sendStoredFile] local stream error', error);
+      stream.destroy();
+      res.destroy();
+      reject(error);
+    };
+    const handleResError = (error) => {
+      console.error('[sendStoredFile] local response error', error);
+      stream.destroy();
+      reject(error);
+    };
+    const handleFinish = () => {
+      console.log('[sendStoredFile] local stream finish');
+      stream.removeListener('error', handleStreamError);
+      res.removeListener('error', handleResError);
+      resolve();
+    };
+    
+    stream.on('error', handleStreamError);
+    res.on('error', handleResError);
+    res.on('finish', handleFinish);
+    console.log('[sendStoredFile] piping local stream to response');
     stream.pipe(res);
   });
+  console.log('[sendStoredFile] local streaming complete');
 }
 
 async function createStoredFileReadStream(storageKey) {

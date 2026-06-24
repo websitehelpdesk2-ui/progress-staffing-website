@@ -585,15 +585,21 @@ function removeStoredFileLater(storedName) {
 }
 
 async function sendStoredAsset(res, storedName, options = {}) {
+  console.log('[sendStoredAsset] start', { storedName, hasMissingMessage: !!options.missingMessage });
   try {
+    console.log('[sendStoredAsset] calling sendStoredFile');
     await sendStoredFile(res, storedName, options);
+    console.log('[sendStoredAsset] sendStoredFile completed successfully');
   } catch (error) {
+    console.error('[sendStoredAsset] caught error', { message: error && error.message, code: error && error.code });
     if (isStorageNotFoundError(error)) {
+      console.log('[sendStoredAsset] storage not found error - sending 404');
       if (!res.headersSent) {
         res.status(404).json({ error: options.missingMessage || 'File not found.' });
       }
       return;
     }
+    console.error('[sendStoredAsset] re-throwing non-storage error');
     throw error;
   }
 }
@@ -12356,11 +12362,21 @@ app.post('/api/admin/contract-bank', authGuard(['admin']), upload.array('contrac
 });
 
 app.get('/api/contract-bank/:id/file', authGuard(['admin']), async (req, res) => {
+  console.log('[contract-bank file] request start', { id: req.params.id, userId: req.auth && req.auth.id });
   try {
     const bankId = Number(req.params.id);
-    if (!Number.isInteger(bankId) || bankId < 1) return res.status(400).json({ error: 'Invalid id.' });
+    console.log('[contract-bank file] validated bankId', { bankId });
+    if (!Number.isInteger(bankId) || bankId < 1) {
+      console.log('[contract-bank file] invalid bankId');
+      return res.status(400).json({ error: 'Invalid id.' });
+    }
     const entry = db.prepare('SELECT * FROM contract_bank WHERE id = ?').get(bankId);
-    if (!entry) return res.status(404).json({ error: 'Not found.' });
+    console.log('[contract-bank file] db lookup result', { found: !!entry, storedName: entry && entry.storedName, mimeType: entry && entry.mimeType, originalName: entry && entry.originalName });
+    if (!entry) {
+      console.log('[contract-bank file] entry not found in database');
+      return res.status(404).json({ error: 'Not found.' });
+    }
+    console.log('[contract-bank file] calling sendStoredAsset');
     return await sendStoredAsset(res, entry.storedName, {
       contentType: entry.mimeType,
       disposition: 'attachment',
@@ -12368,13 +12384,16 @@ app.get('/api/contract-bank/:id/file', authGuard(['admin']), async (req, res) =>
       missingMessage: 'File missing from storage.',
     });
   } catch (error) {
+    console.error('[contract-bank file] route error caught', { message: error && error.message, stack: error && error.stack });
     logCaughtException('contract bank file download', error, {
       actorUserId: req.auth && req.auth.id,
       bankId: req.params && req.params.id,
     });
     if (!res.headersSent) {
+      console.log('[contract-bank file] sending 500 error response');
       return res.status(500).json({ error: 'Failed to open contract file.' });
     }
+    console.log('[contract-bank file] headers already sent, attempting to close connection');
     if (!res.writableEnded) {
       res.end();
     }

@@ -117,9 +117,32 @@ function resolveStoredFilePath(storageKey) {
   return path.join(uploadDir, ...String(storageKey || '').split('/').filter(Boolean));
 }
 
+function toAsciiFilenameFallback(fileName) {
+  const normalized = String(fileName || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\u0000-\u001f\u007f]/g, '')
+    .replace(/["\\]/g, '')
+    .replace(/[^\x20-\x7E]/g, '_')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const trimmed = normalized.slice(0, 180).trim();
+  return trimmed || 'download';
+}
+
+function encodeRfc5987(value) {
+  return encodeURIComponent(String(value || 'download'))
+    .replace(/['()*]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
+}
+
 function buildContentDisposition(disposition, fileName) {
-  const safeName = String(fileName || 'download').replace(/[\r\n"]/g, '').trim() || 'download';
-  return `${disposition}; filename="${safeName}"`;
+  const originalName = String(fileName || 'download')
+    .replace(/[\r\n]/g, ' ')
+    .trim() || 'download';
+  const asciiName = toAsciiFilenameFallback(originalName);
+  const encodedName = encodeRfc5987(originalName);
+  return `${disposition}; filename="${asciiName}"; filename*=UTF-8''${encodedName}`;
 }
 
 function isStorageNotFoundError(error) {

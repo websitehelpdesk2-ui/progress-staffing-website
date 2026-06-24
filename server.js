@@ -12356,16 +12356,29 @@ app.post('/api/admin/contract-bank', authGuard(['admin']), upload.array('contrac
 });
 
 app.get('/api/contract-bank/:id/file', authGuard(['admin']), async (req, res) => {
-  const bankId = Number(req.params.id);
-  if (!Number.isInteger(bankId) || bankId < 1) return res.status(400).json({ error: 'Invalid id.' });
-  const entry = db.prepare('SELECT * FROM contract_bank WHERE id = ?').get(bankId);
-  if (!entry) return res.status(404).json({ error: 'Not found.' });
-  return sendStoredAsset(res, entry.storedName, {
-    contentType: entry.mimeType,
-    disposition: 'attachment',
-    downloadName: entry.originalName || 'Contract.pdf',
-    missingMessage: 'File missing from storage.',
-  });
+  try {
+    const bankId = Number(req.params.id);
+    if (!Number.isInteger(bankId) || bankId < 1) return res.status(400).json({ error: 'Invalid id.' });
+    const entry = db.prepare('SELECT * FROM contract_bank WHERE id = ?').get(bankId);
+    if (!entry) return res.status(404).json({ error: 'Not found.' });
+    return await sendStoredAsset(res, entry.storedName, {
+      contentType: entry.mimeType,
+      disposition: 'attachment',
+      downloadName: entry.originalName || 'Contract.pdf',
+      missingMessage: 'File missing from storage.',
+    });
+  } catch (error) {
+    logCaughtException('contract bank file download', error, {
+      actorUserId: req.auth && req.auth.id,
+      bankId: req.params && req.params.id,
+    });
+    if (!res.headersSent) {
+      return res.status(500).json({ error: 'Failed to open contract file.' });
+    }
+    if (!res.writableEnded) {
+      res.end();
+    }
+  }
 });
 
 app.post('/api/admin/contract-bank/:id/send', authGuard(['admin']), (req, res) => {

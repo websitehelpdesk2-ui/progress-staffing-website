@@ -12381,7 +12381,7 @@ app.get('/api/contract-bank/:id/file', authGuard(['admin']), async (req, res) =>
       contentType: entry.mimeType,
       disposition: 'attachment',
       downloadName: entry.originalName || 'Contract.pdf',
-      missingMessage: 'File missing from storage.',
+      missingMessage: 'File no longer exists on the server.',
     });
   } catch (error) {
     console.error('[contract-bank file] route error caught', { message: error && error.message, stack: error && error.stack });

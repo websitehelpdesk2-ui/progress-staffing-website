@@ -1,102 +1,21 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { PassThrough } = require('stream');
-const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
-
-function isProductionDeployment() {
-  const nodeEnv = String(process.env.NODE_ENV || '').trim().toLowerCase();
-  const renderFlag = String(process.env.RENDER || '').trim().toLowerCase();
-  return nodeEnv === 'production' || renderFlag === 'true';
-}
 
 const localDataDir = path.join(__dirname, '..', 'data');
-const localUploadDir = path.join(localDataDir, 'uploads');
+const configuredUploadDir = String(process.env.UPLOAD_STORAGE_DIR || '').trim();
+const uploadDir = configuredUploadDir
+  ? path.resolve(configuredUploadDir)
+  : path.resolve(process.cwd(), 'uploads');
 
-function inferS3BackendConfigured() {
-  return Boolean(
-    String(process.env.STORAGE_S3_BUCKET || '').trim()
-    && String(process.env.STORAGE_S3_REGION || '').trim()
-    && String(process.env.STORAGE_S3_ACCESS_KEY_ID || '').trim()
-    && String(process.env.STORAGE_S3_SECRET_ACCESS_KEY || '').trim()
-  );
-}
-
-function resolveStorageBackend() {
-  const explicit = String(process.env.STORAGE_BACKEND || '').trim().toLowerCase();
-  if (explicit === 's3' || explicit === 'local') {
-    return explicit;
-  }
-
-  if (isProductionDeployment()) {
-    if (inferS3BackendConfigured()) {
-      return 's3';
-    }
-    if (String(process.env.UPLOAD_STORAGE_DIR || '').trim()) {
-      return 'local';
-    }
-    throw new Error('Production uploads require S3-compatible object storage or an explicit durable UPLOAD_STORAGE_DIR mount. Do not use Render ephemeral app disk for uploads.');
-  }
-
-  return inferS3BackendConfigured() ? 's3' : 'local';
-}
-
-function resolveUploadDir() {
-  const configuredRoot = String(process.env.UPLOAD_STORAGE_DIR || '').trim();
-  if (!configuredRoot) {
-    if (isProductionDeployment()) {
-      throw new Error('UPLOAD_STORAGE_DIR must point to durable storage when STORAGE_BACKEND=local in production.');
-    }
-    fs.mkdirSync(localDataDir, { recursive: true });
-    fs.mkdirSync(localUploadDir, { recursive: true });
-    return localUploadDir;
-  }
-
-  const resolved = path.resolve(configuredRoot);
-  fs.mkdirSync(resolved, { recursive: true });
-  return resolved;
-}
-
-let storageBackend = null;
-let uploadDir = null;
-let s3Client = null;
-let s3Bucket = '';
-let storageInitError = null;
-let storageInitialized = false;
-
-function initializeStorage() {
-  if (storageInitialized) return;
-  storageInitialized = true;
-
-  try {
-    storageBackend = resolveStorageBackend();
-    uploadDir = storageBackend === 'local' ? resolveUploadDir() : null;
-    s3Bucket = String(process.env.STORAGE_S3_BUCKET || '').trim();
-    s3Client = storageBackend === 's3'
-      ? new S3Client({
-          region: String(process.env.STORAGE_S3_REGION || '').trim(),
-          endpoint: String(process.env.STORAGE_S3_ENDPOINT || '').trim() || undefined,
-          forcePathStyle: String(process.env.STORAGE_S3_FORCE_PATH_STYLE || '').trim().toLowerCase() === 'true',
-          credentials: {
-            accessKeyId: String(process.env.STORAGE_S3_ACCESS_KEY_ID || '').trim(),
-            secretAccessKey: String(process.env.STORAGE_S3_SECRET_ACCESS_KEY || '').trim(),
-          },
-        })
-      : null;
-  } catch (error) {
-    storageInitError = error;
-  }
-}
-
-function ensureStorageReady() {
-  initializeStorage();
-  if (storageInitError) {
-    throw storageInitError;
-  }
-}
+fs.mkdirSync(uploadDir, { recursive: true });
 
 function sanitizeNamespace(namespace) {
-  return String(namespace || 'uploads').trim().toLowerCase().replace(/[^a-z0-9/_-]+/g, '-').replace(/^[-/]+|[-/]+$/g, '') || 'uploads';
+  return String(namespace || 'uploads')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9/_-]+/g, '-')
+    .replace(/^[-/]+|[-/]+$/g, '') || 'uploads';
 }
 
 function sanitizeExtension(originalName) {
@@ -113,8 +32,15 @@ function createStorageKey(namespace, originalName) {
 }
 
 function resolveStoredFilePath(storageKey) {
-  ensureStorageReady();
-  return path.join(uploadDir, ...String(storageKey || '').split('/').filter(Boolean));
+  const normalizedKey = String(storageKey || '').replace(/\\/g, '/').trim();
+  const fullPath = path.resolve(uploadDir, ...normalizedKey.split('/').filter(Boolean));
+  const relative = path.relative(uploadDir, fullPath);
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+    const error = new Error('Invalid storage key path.');
+    error.code = 'EINVAL';
+    throw error;
+  }
+  return fullPath;
 }
 
 function toAsciiFilenameFallback(fileName) {
@@ -147,165 +73,90 @@ function buildContentDisposition(disposition, fileName) {
 
 function isStorageNotFoundError(error) {
   const code = String(error && (error.code || error.name || error.Code) || '').trim();
-  const statusCode = Number(error && error.$metadata && error.$metadata.httpStatusCode);
-  return code === 'ENOENT' || code === 'NoSuchKey' || code === 'NotFound' || statusCode === 404;
+  return code === 'ENOENT' || code === 'NotFound';
 }
 
 async function storeUploadedFile(file, options = {}) {
-  ensureStorageReady();
   if (!file || !file.buffer || !Buffer.isBuffer(file.buffer)) {
     throw new Error('Uploaded file buffer is required.');
   }
 
   const storageKey = createStorageKey(options.namespace, file.originalname);
-  if (storageBackend === 's3') {
-    await s3Client.send(new PutObjectCommand({
-      Bucket: s3Bucket,
-      Key: storageKey,
-      Body: file.buffer,
-      ContentType: String(file.mimetype || 'application/octet-stream'),
-    }));
-  } else {
-    const fullPath = resolveStoredFilePath(storageKey);
-    fs.mkdirSync(path.dirname(fullPath), { recursive: true });
-    await fs.promises.writeFile(fullPath, file.buffer);
-  }
+  const fullPath = resolveStoredFilePath(storageKey);
+  await fs.promises.mkdir(path.dirname(fullPath), { recursive: true });
+  await fs.promises.writeFile(fullPath, file.buffer);
 
   return { storageKey };
 }
 
 async function deleteStoredFile(storageKey) {
-  ensureStorageReady();
   const normalizedKey = String(storageKey || '').trim();
   if (!normalizedKey) return;
 
-  if (storageBackend === 's3') {
-    await s3Client.send(new DeleteObjectCommand({
-      Bucket: s3Bucket,
-      Key: normalizedKey,
-    }));
-    return;
-  }
-
   const fullPath = resolveStoredFilePath(normalizedKey);
-  await fs.promises.unlink(fullPath);
+  try {
+    await fs.promises.unlink(fullPath);
+  } catch (error) {
+    if (!isStorageNotFoundError(error)) throw error;
+  }
 }
 
 async function sendStoredFile(res, storageKey, options = {}) {
-  ensureStorageReady();
-  console.log('[sendStoredFile] start', { storageKey, backend: storageBackend, hasContentType: !!options.contentType });
   const normalizedKey = String(storageKey || '').trim();
   if (!normalizedKey) {
     const error = new Error('Stored file not found.');
     error.code = 'ENOENT';
-    console.error('[sendStoredFile] empty key error');
+    throw error;
+  }
+
+  const fullPath = resolveStoredFilePath(normalizedKey);
+  try {
+    await fs.promises.access(fullPath, fs.constants.F_OK | fs.constants.R_OK);
+  } catch (error) {
+    error.code = 'ENOENT';
     throw error;
   }
 
   const contentType = String(options.contentType || '').trim();
   const disposition = String(options.disposition || 'attachment').trim().toLowerCase() === 'inline' ? 'inline' : 'attachment';
-  
-  try {
-    const dispositionHeader = buildContentDisposition(disposition, options.downloadName);
-    console.log('[sendStoredFile] setting disposition header', { disposition, downloadName: options.downloadName, header: dispositionHeader });
-    res.setHeader('Content-Disposition', dispositionHeader);
-  } catch (headerError) {
-    console.error('[sendStoredFile] disposition header error', headerError);
-    throw headerError;
-  }
-  
+  res.setHeader('Content-Disposition', buildContentDisposition(disposition, options.downloadName));
   if (contentType) {
-    console.log('[sendStoredFile] setting content-type', { contentType });
     res.type(contentType);
   }
 
-  if (storageBackend === 's3') {
-    console.log('[sendStoredFile] s3 backend - fetching object');
-    const response = await s3Client.send(new GetObjectCommand({
-      Bucket: s3Bucket,
-      Key: normalizedKey,
-    }));
-    console.log('[sendStoredFile] s3 object received', { contentLength: response.ContentLength, responseContentType: response.ContentType });
-    
-    if (!contentType && response.ContentType) {
-      res.type(response.ContentType);
-    }
-    if (response.ContentLength != null) {
-      res.setHeader('Content-Length', String(response.ContentLength));
-    }
-
-    await new Promise((resolve, reject) => {
-      const body = response.Body;
-      console.log('[sendStoredFile] s3 stream - validating body');
-      if (!body || typeof body.pipe !== 'function') {
-        const err = new Error('Stored file body stream is unavailable.');
-        console.error('[sendStoredFile] s3 body invalid', err);
-        reject(err);
-        return;
-      }
-      
-      const handleBodyError = (error) => {
-        console.error('[sendStoredFile] s3 body stream error', error);
-        stream.destroy();
-        reject(error);
-      };
-      const handleResError = (error) => {
-        console.error('[sendStoredFile] s3 response stream error', error);
-        body.destroy();
-        reject(error);
-      };
-      const handleFinish = () => {
-        console.log('[sendStoredFile] s3 stream finish');
-        body.removeListener('error', handleBodyError);
-        res.removeListener('error', handleResError);
-        resolve();
-      };
-      
-      body.on('error', handleBodyError);
-      res.on('error', handleResError);
-      res.on('finish', handleFinish);
-      console.log('[sendStoredFile] s3 piping body to response');
-      body.pipe(res);
-    });
-    console.log('[sendStoredFile] s3 streaming complete');
-    return;
+  const stats = await fs.promises.stat(fullPath);
+  if (Number.isFinite(stats.size)) {
+    res.setHeader('Content-Length', String(stats.size));
   }
 
-  const fullPath = resolveStoredFilePath(normalizedKey);
-  console.log('[sendStoredFile] local backend - reading from', fullPath);
   await new Promise((resolve, reject) => {
     const stream = fs.createReadStream(fullPath);
-    console.log('[sendStoredFile] local stream created');
-    
-    const handleStreamError = (error) => {
-      console.error('[sendStoredFile] local stream error', error);
-      stream.destroy();
-      res.destroy();
-      reject(error);
+
+    let settled = false;
+    const complete = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      stream.removeListener('error', onStreamError);
+      res.removeListener('error', onResError);
+      res.removeListener('close', onResClose);
+      res.removeListener('finish', onResFinish);
+      fn(value);
     };
-    const handleResError = (error) => {
-      console.error('[sendStoredFile] local response error', error);
-      stream.destroy();
-      reject(error);
-    };
-    const handleFinish = () => {
-      console.log('[sendStoredFile] local stream finish');
-      stream.removeListener('error', handleStreamError);
-      res.removeListener('error', handleResError);
-      resolve();
-    };
-    
-    stream.on('error', handleStreamError);
-    res.on('error', handleResError);
-    res.on('finish', handleFinish);
-    console.log('[sendStoredFile] piping local stream to response');
+
+    const onStreamError = (error) => complete(reject, error);
+    const onResError = (error) => complete(reject, error);
+    const onResClose = () => complete(resolve);
+    const onResFinish = () => complete(resolve);
+
+    stream.on('error', onStreamError);
+    res.on('error', onResError);
+    res.on('close', onResClose);
+    res.on('finish', onResFinish);
     stream.pipe(res);
   });
-  console.log('[sendStoredFile] local streaming complete');
 }
 
 async function createStoredFileReadStream(storageKey) {
-  ensureStorageReady();
   const normalizedKey = String(storageKey || '').trim();
   if (!normalizedKey) {
     const error = new Error('Stored file not found.');
@@ -313,28 +164,14 @@ async function createStoredFileReadStream(storageKey) {
     throw error;
   }
 
-  if (storageBackend === 's3') {
-    const response = await s3Client.send(new GetObjectCommand({
-      Bucket: s3Bucket,
-      Key: normalizedKey,
-    }));
-
-    const body = response.Body;
-    if (!body || typeof body.pipe !== 'function') {
-      throw new Error('Stored file body stream is unavailable.');
-    }
-
-    const stream = new PassThrough();
-    body.on('error', (error) => stream.destroy(error));
-    body.pipe(stream);
-    return {
-      stream,
-      contentLength: response.ContentLength != null ? Number(response.ContentLength) : null,
-      contentType: response.ContentType || null,
-    };
+  const fullPath = resolveStoredFilePath(normalizedKey);
+  try {
+    await fs.promises.access(fullPath, fs.constants.F_OK | fs.constants.R_OK);
+  } catch (error) {
+    error.code = 'ENOENT';
+    throw error;
   }
 
-  const fullPath = resolveStoredFilePath(normalizedKey);
   const stats = await fs.promises.stat(fullPath);
   return {
     stream: fs.createReadStream(fullPath),
@@ -346,12 +183,10 @@ async function createStoredFileReadStream(storageKey) {
 module.exports = {
   createStoredFileReadStream,
   deleteStoredFile,
-  isProductionDeployment,
   isStorageNotFoundError,
   localDataDir,
   resolveStoredFilePath,
   sendStoredFile,
-  storageBackend,
   storeUploadedFile,
   uploadDir,
 };

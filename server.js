@@ -28,6 +28,7 @@ const {
   deleteStoredFile,
   isStorageNotFoundError,
   localDataDir,
+  resolveStoredFilePath,
   sendStoredFile,
   storeUploadedFile,
 } = require('./storage/file-storage');

@@ -3635,61 +3635,61 @@ body.theme-dark a {
 
 /* ── Account form ───────────────────────────────────── */
 .portal-account-form {
-
-  /* ── Jobsite portal utilities ───────────────────────── */
-  .portal-section--flex2 { flex: 2; }
-  .portal-form-actions-row--md { flex-direction: row; gap: 0.8rem; }
-  .portal-form-actions-row--md-mt { flex-direction: row; gap: 0.8rem; margin-top: 1rem; }
-  .portal-form-actions-row-wrap { flex-direction: row; gap: 0.6rem; flex-wrap: wrap; margin-top: 0.8rem; }
-  .portal-form-actions-notif-enable { flex-direction: row; margin-bottom: 0.9rem; }
-  .portal-disabled-btn { opacity: 0.5; cursor: not-allowed; }
-  .portal-shift-preview-panel { display: none; margin-top: 1.5rem; padding: 1.2rem; background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; }
-  .portal-preview-heading { margin: 0 0 1rem; font-size: 1rem; color: var(--color-text); }
-  .portal-preview-grid { display: grid; gap: 0.8rem; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-bottom: 1.2rem; }
-  .portal-preview-label { font-size: 0.85rem; color: var(--color-muted); margin-bottom: 0.3rem; }
-  .portal-preview-value { font-weight: 600; }
-  .portal-preview-stat-sig { font-size: 0.8rem; color: var(--color-muted); margin-top: 0.2rem; }
-  .portal-btn-row { display: flex; flex-direction: row; gap: 0.8rem; }
-  .portal-time-grid { display: grid; gap: 0.9rem; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
-  .portal-sched-preview-block { margin-top: 1rem; padding: 0.8rem; background: rgba(0,0,0,0.05); border-radius: 8px; font-size: 0.9rem; }
-  .portal-sched-preview-label { color: var(--color-muted); margin-bottom: 0.4rem; }
-  .portal-sched-preview-value { font-weight: 600; color: var(--color-text); }
-  .portal-edit-grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
-  .portal-ts-review-panel { display: none; margin-top: 1.5rem; padding: 1.5rem; background: rgba(56,189,248,0.06); border: 1px solid rgba(56,189,248,0.22); border-radius: 14px; }
-  .portal-review-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
-  .portal-review-heading { margin: 0; font-size: 1rem; color: var(--color-text); }
-  .portal-ts-review-meta { margin-bottom: 1rem; display: grid; gap: 0.5rem; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); font-size: 0.92rem; }
-  .portal-table-wrap--mb { margin-bottom: 1rem; }
-  .portal-ts-approved-badge { display: none; padding: 0.75rem 1rem; background: rgba(34,197,94,0.12); border: 1px solid rgba(34,197,94,0.3); border-radius: 10px; margin-bottom: 1rem; }
-  .portal-ts-approved-text { color: #16a34a; }
-  .portal-ts-approved-detail { margin-left: 0.5rem; font-size: 0.9rem; color: var(--color-muted); }
-  .portal-ts-approve-form { display: none; }
-  .portal-form-row--max420 { max-width: 420px; }
-  .portal-contract-review-panel { display: none; margin-top: 1.25rem; padding: 1.2rem; background: rgba(56,189,248,0.06); border: 1px solid rgba(56,189,248,0.22); border-radius: 14px; }
-  .portal-contract-cancel-panel { display: none; margin-top: 1.1rem; padding: 1rem; background: rgba(239,68,68,0.05); border: 1px solid rgba(239,68,68,0.2); border-radius: 10px; }
-  .portal-contract-renewal-panel { display: none; margin-top: 1.1rem; padding: 1rem; background: rgba(56,189,248,0.06); border: 1px solid rgba(56,189,248,0.22); border-radius: 10px; }
-  .portal-panel-bold-heading { margin: 0 0 0.7rem; font-weight: 600; color: var(--color-text); }
-  .portal-panel-msg { margin-top: 0.5rem; }
-  .portal-two-col-grid { display: grid; gap: 1.5rem; grid-template-columns: 1fr 1fr; }
-  .portal-notifications-end-row { display: flex; justify-content: flex-end; margin-top: 1rem; }
-  .portal-table-wrap--mt-sm { margin-top: 0.5rem; }
-  .portal-form-mb { margin-bottom: 1rem; }
-
-  /* ── Login / register / apply utilities ─────────────── */
-  .login-or-text { margin: -0.1rem 0 0.2rem; text-align: center; font-weight: 700; letter-spacing: 0.04em; }
-  .portal-form-max760 { max-width: 760px; }
-  .portal-section--compact { margin: 0 0 1rem; padding: 1rem 1.1rem; }
-  .portal-section__header--tight { margin-bottom: 0.35rem; }
-  .portal-section__header--sm { margin-bottom: 0.6rem; }
-  .portal-section__title--sm { font-size: 1rem; }
-  .section-subtitle--mb9 { margin: 0 0 0.9rem; }
-  .section-subtitle--flush { margin: 0; }
-  .certify-label { font-weight: 600; }
-  .certify-disclaimer { margin-bottom: 0.6rem; }
-  .certify-check-label { display: flex; gap: 0.55rem; align-items: flex-start; line-height: 1.45; }
-  .certify-checkbox { margin-top: 0.25rem; }
   max-width: 520px;
 }
+
+/* ── Jobsite portal utilities ───────────────────────── */
+.portal-section--flex2 { flex: 2; }
+.portal-form-actions-row--md { flex-direction: row; gap: 0.8rem; }
+.portal-form-actions-row--md-mt { flex-direction: row; gap: 0.8rem; margin-top: 1rem; }
+.portal-form-actions-row-wrap { flex-direction: row; gap: 0.6rem; flex-wrap: wrap; margin-top: 0.8rem; }
+.portal-form-actions-notif-enable { flex-direction: row; margin-bottom: 0.9rem; }
+.portal-disabled-btn { opacity: 0.5; cursor: not-allowed; }
+.portal-shift-preview-panel { display: none; margin-top: 1.5rem; padding: 1.2rem; background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; }
+.portal-preview-heading { margin: 0 0 1rem; font-size: 1rem; color: var(--color-text); }
+.portal-preview-grid { display: grid; gap: 0.8rem; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-bottom: 1.2rem; }
+.portal-preview-label { font-size: 0.85rem; color: var(--color-muted); margin-bottom: 0.3rem; }
+.portal-preview-value { font-weight: 600; }
+.portal-preview-stat-sig { font-size: 0.8rem; color: var(--color-muted); margin-top: 0.2rem; }
+.portal-btn-row { display: flex; flex-direction: row; gap: 0.8rem; }
+.portal-time-grid { display: grid; gap: 0.9rem; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+.portal-sched-preview-block { margin-top: 1rem; padding: 0.8rem; background: rgba(0,0,0,0.05); border-radius: 8px; font-size: 0.9rem; }
+.portal-sched-preview-label { color: var(--color-muted); margin-bottom: 0.4rem; }
+.portal-sched-preview-value { font-weight: 600; color: var(--color-text); }
+.portal-edit-grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+.portal-ts-review-panel { display: none; margin-top: 1.5rem; padding: 1.5rem; background: rgba(56,189,248,0.06); border: 1px solid rgba(56,189,248,0.22); border-radius: 14px; }
+.portal-review-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+.portal-review-heading { margin: 0; font-size: 1rem; color: var(--color-text); }
+.portal-ts-review-meta { margin-bottom: 1rem; display: grid; gap: 0.5rem; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); font-size: 0.92rem; }
+.portal-table-wrap--mb { margin-bottom: 1rem; }
+.portal-ts-approved-badge { display: none; padding: 0.75rem 1rem; background: rgba(34,197,94,0.12); border: 1px solid rgba(34,197,94,0.3); border-radius: 10px; margin-bottom: 1rem; }
+.portal-ts-approved-text { color: #16a34a; }
+.portal-ts-approved-detail { margin-left: 0.5rem; font-size: 0.9rem; color: var(--color-muted); }
+.portal-ts-approve-form { display: none; }
+.portal-form-row--max420 { max-width: 420px; }
+.portal-contract-review-panel { display: none; margin-top: 1.25rem; padding: 1.2rem; background: rgba(56,189,248,0.06); border: 1px solid rgba(56,189,248,0.22); border-radius: 14px; }
+.portal-contract-cancel-panel { display: none; margin-top: 1.1rem; padding: 1rem; background: rgba(239,68,68,0.05); border: 1px solid rgba(239,68,68,0.2); border-radius: 10px; }
+.portal-contract-renewal-panel { display: none; margin-top: 1.1rem; padding: 1rem; background: rgba(56,189,248,0.06); border: 1px solid rgba(56,189,248,0.22); border-radius: 10px; }
+.portal-panel-bold-heading { margin: 0 0 0.7rem; font-weight: 600; color: var(--color-text); }
+.portal-panel-msg { margin-top: 0.5rem; }
+.portal-two-col-grid { display: grid; gap: 1.5rem; grid-template-columns: 1fr 1fr; }
+.portal-notifications-end-row { display: flex; justify-content: flex-end; margin-top: 1rem; }
+.portal-table-wrap--mt-sm { margin-top: 0.5rem; }
+.portal-form-mb { margin-bottom: 1rem; }
+
+/* ── Login / register / apply utilities ─────────────── */
+.login-or-text { margin: -0.1rem 0 0.2rem; text-align: center; font-weight: 700; letter-spacing: 0.04em; }
+.portal-form-max760 { max-width: 760px; }
+.portal-section--compact { margin: 0 0 1rem; padding: 1rem 1.1rem; }
+.portal-section__header--tight { margin-bottom: 0.35rem; }
+.portal-section__header--sm { margin-bottom: 0.6rem; }
+.portal-section__title--sm { font-size: 1rem; }
+.section-subtitle--mb9 { margin: 0 0 0.9rem; }
+.section-subtitle--flush { margin: 0; }
+.certify-label { font-weight: 600; }
+.certify-disclaimer { margin-bottom: 0.6rem; }
+.certify-check-label { display: flex; gap: 0.55rem; align-items: flex-start; line-height: 1.45; }
+.certify-checkbox { margin-top: 0.25rem; }
 
 /* ═══════════════════════════════════════════════════════════════ */
 /* Mobile responsiveness improvements                              */

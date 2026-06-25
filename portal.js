@@ -1109,6 +1109,7 @@ let portalRealtimeBound = false;
 let portalRealtimeReconnectTimer = null;
 let portalRealtimeReconnectAttempts = 0;
 let portalWidgetLayoutBound = false;
+let portalJobsiteLayoutBound = false;
 let portalDrawerOverlay = null;
 let portalDrawerContent = null;
 let portalDrawerStash = null;
@@ -4000,6 +4001,138 @@ function resolvePortalPrioritySections(pageType, sections) {
   });
 
   return picked;
+}
+
+function normalizePortalLayoutTitle(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/&/g, 'and')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function getPortalSectionTitle(section) {
+  if (!section) return '';
+  const title = section.querySelector('.portal-section__title');
+  return String(section.dataset.tileTitle || (title ? title.textContent : '') || '').trim();
+}
+
+function findPortalSectionByTitles(sections, titles) {
+  const normalizedTitles = new Set((Array.isArray(titles) ? titles : [titles]).map((title) => normalizePortalLayoutTitle(title)));
+  return sections.find((section) => normalizedTitles.has(normalizePortalLayoutTitle(getPortalSectionTitle(section))));
+}
+
+function createJobsiteDrawerTile(label, sectionId, summary) {
+  const tile = document.createElement('button');
+  tile.type = 'button';
+  tile.className = 'portal-widget-tile';
+  tile.dataset.sectionId = sectionId;
+  tile.innerHTML = `
+    <span class="portal-widget-tile__title">${escapeHtml(label)}</span>
+    <span class="portal-widget-tile__summary">${escapeHtml(summary || 'Open drawer')}</span>
+    <span class="portal-widget-tile__hint">Tap to open</span>
+  `;
+  return tile;
+}
+
+function setupJobsiteDashboardLayout() {
+  if (portalJobsiteLayoutBound) return;
+
+  const root = document.querySelector('main .container');
+  if (!root) return;
+
+  const allSections = Array.from(root.querySelectorAll('.portal-section'));
+  if (!allSections.length) return;
+
+  const statRow = root.querySelector('.stat-row');
+  const topSection = findPortalSectionByTitles(allSections, ['Company Profile']);
+  const notificationsSection = findPortalSectionByTitles(allSections, ['Notifications']);
+  const messagesSection = findPortalSectionByTitles(allSections, ['Messages']);
+
+  const bottomTileDefs = [
+    { label: 'Posted shifts', titles: ['Your Shifts', 'Posted Shifts'], id: 'jobsitePostedShiftsSection', summary: 'Review posted shifts' },
+    { label: 'Post a new shift', titles: ['Post a New Shift'], id: 'jobsiteCreateJobSection', summary: 'Open the shift form' },
+    { label: 'Assigned workers', titles: ['Assigned Workers'], id: 'jobsiteAssignedWorkersSection', summary: 'View assigned workers' },
+    { label: 'Timesheet approvals', titles: ['Timesheet Approvals'], id: 'jobsiteTimesheetSection', summary: 'Approve submitted hours' },
+    { label: 'Worker documents and background', titles: ['Worker Documents & Background', 'Worker Documents and Background'], id: 'jobsiteWorkerDocumentsSection', summary: 'Review approved files' },
+    { label: 'Worker signed compliance forms', titles: ['Worker Signed Compliance Forms'], id: 'jobsiteWorkerComplianceSection', summary: 'Review signed forms' },
+    { label: 'Contracts', titles: ['Contracts'], id: 'jobsiteContractsSection', summary: 'Open contract drawer' },
+    { label: 'Account Settings', titles: ['Account Settings', 'Account'], id: 'portalAccountSection', summary: 'Edit account settings' },
+  ];
+
+  const matchedBottomSections = bottomTileDefs
+    .map((definition) => {
+      const section = findPortalSectionByTitles(allSections, definition.titles);
+      if (!section) return null;
+      if (!section.id) section.id = definition.id;
+      section.dataset.tileTitle = definition.label;
+      section.dataset.preserveDrawerLayout = '1';
+      return { section, ...definition };
+    })
+    .filter(Boolean);
+
+  if (topSection) topSection.dataset.preserveDrawerLayout = '1';
+  if (notificationsSection) notificationsSection.dataset.preserveDrawerLayout = '1';
+  if (messagesSection) messagesSection.dataset.preserveDrawerLayout = '1';
+
+  ensurePortalDrawer();
+
+  const layoutHost = document.createElement('div');
+  layoutHost.className = 'portal-jobsite-layout';
+
+  if (topSection) {
+    layoutHost.appendChild(topSection);
+  }
+
+  const middleGrid = document.createElement('div');
+  middleGrid.className = 'portal-two-col-grid';
+  if (notificationsSection) middleGrid.appendChild(notificationsSection);
+  if (messagesSection) middleGrid.appendChild(messagesSection);
+  if (middleGrid.children.length) layoutHost.appendChild(middleGrid);
+
+  const bottomGrid = document.createElement('section');
+  bottomGrid.className = 'portal-widget-grid';
+  bottomTileDefs.forEach((definition) => {
+    const match = matchedBottomSections.find((entry) => normalizePortalLayoutTitle(entry.label) === normalizePortalLayoutTitle(definition.label));
+    if (!match) return;
+    const tile = createJobsiteDrawerTile(match.label, match.section.id, match.summary);
+    tile.addEventListener('click', () => {
+      openPortalDrawerById(match.section.id);
+    });
+    bottomGrid.appendChild(tile);
+  });
+  layoutHost.appendChild(bottomGrid);
+
+  const drawerStash = document.createElement('div');
+  drawerStash.className = 'portal-jobsite-drawer-stash';
+  drawerStash.hidden = true;
+
+  allSections.forEach((section) => {
+    if (section === topSection || section === notificationsSection || section === messagesSection) {
+      return;
+    }
+
+    if (!section.id) {
+      const title = normalizePortalLayoutTitle(getPortalSectionTitle(section));
+      section.id = title ? `jobsite-${title.replace(/\s+/g, '-')}` : `jobsite-section-${drawerStash.children.length + 1}`;
+    }
+    section.dataset.preserveDrawerLayout = '1';
+    drawerStash.appendChild(section);
+  });
+
+  layoutHost.appendChild(drawerStash);
+
+  if (statRow) {
+    if (statRow.nextSibling) {
+      root.insertBefore(layoutHost, statRow.nextSibling);
+    } else {
+      root.appendChild(layoutHost);
+    }
+  } else {
+    root.prepend(layoutHost);
+  }
+
+  portalJobsiteLayoutBound = true;
 }
 
 function shouldDisableDrawerForSection(pageType, section) {
@@ -12736,7 +12869,7 @@ async function initPortalPage() {
     await bindNotificationControls();
     startPortalRealtimeSync(user);
     await handlePortalNotificationIntent(user);
-    setupPortalWidgetLayout(pageType);
+    setupJobsiteDashboardLayout();
     return;
   }
 

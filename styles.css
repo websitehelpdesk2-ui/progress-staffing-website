@@ -3676,6 +3676,7 @@ body.theme-dark a {
 .portal-notifications-end-row { display: flex; justify-content: flex-end; margin-top: 1rem; }
 .portal-table-wrap--mt-sm { margin-top: 0.5rem; }
 .portal-form-mb { margin-bottom: 1rem; }
+.portal-jobsite-layout { display: flex; flex-direction: column; gap: 1.5rem; }
 
 /* ── Login / register / apply utilities ─────────────── */
 .login-or-text { margin: -0.1rem 0 0.2rem; text-align: center; font-weight: 700; letter-spacing: 0.04em; }

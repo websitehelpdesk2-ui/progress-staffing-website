@@ -2125,6 +2125,39 @@ async function apiFetch(url, options = {}) {
   return res;
 }
 
+async function fetchContractFileBlob(contractId) {
+  const res = await apiFetch(`/api/contracts/${contractId}/file`, {
+    method: 'GET',
+  });
+  if (!res.ok) {
+    const payload = await res.json().catch(() => ({}));
+    throw new Error(payload.error || 'Unable to fetch contract file.');
+  }
+  return res.blob();
+}
+
+async function openContractFileInNewTab(contractId) {
+  const blob = await fetchContractFileBlob(contractId);
+  const objectUrl = URL.createObjectURL(blob);
+  const tab = window.open(objectUrl, '_blank', 'noopener');
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+  if (!tab) {
+    window.location.href = objectUrl;
+  }
+}
+
+async function downloadContractFile(contractId) {
+  const blob = await fetchContractFileBlob(contractId);
+  const objectUrl = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = objectUrl;
+  anchor.download = '';
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+}
+
 function routeForRole(role, portalScope = 'full') {
   const normalizedScope = String(portalScope || '').trim().toLowerCase();
   if (IS_FILE_PROTOCOL) {
@@ -3540,6 +3573,8 @@ async function openJobsiteContractReviewById(contractId) {
     contractDownloadBtn.href = String(contract.fileUrl || '#');
     contractDownloadBtn.style.display = status === 'executed' ? '' : 'none';
   }
+  contractViewLink.dataset.contractId = String(contract.id);
+  if (contractDownloadBtn) contractDownloadBtn.dataset.contractId = String(contract.id);
   if (contractSignaturePreview) contractSignaturePreview.innerHTML = renderContractSignaturePreview(contract);
   contractSignBtn.dataset.contractId = String(contract.id);
   contractDeclineBtn.dataset.contractId = String(contract.id);
@@ -10170,6 +10205,34 @@ function bindJobsiteForms(currentUser) {
     contractReviewCloseBtn.dataset.bound = '1';
     contractReviewCloseBtn.addEventListener('click', () => {
       if (contractReviewPanel) contractReviewPanel.style.display = 'none';
+    });
+  }
+
+  if (contractViewLink && contractViewLink.dataset.bound !== '1') {
+    contractViewLink.dataset.bound = '1';
+    contractViewLink.addEventListener('click', async (event) => {
+      event.preventDefault();
+      const contractId = asInt(contractViewLink.dataset.contractId);
+      if (!Number.isInteger(contractId) || contractId < 1) return;
+      try {
+        await openContractFileInNewTab(contractId);
+      } catch (error) {
+        setMessage(contractReviewMsg, error.message || 'Unable to open contract file.', 'error');
+      }
+    });
+  }
+
+  if (contractDownloadBtn && contractDownloadBtn.dataset.bound !== '1') {
+    contractDownloadBtn.dataset.bound = '1';
+    contractDownloadBtn.addEventListener('click', async (event) => {
+      event.preventDefault();
+      const contractId = asInt(contractDownloadBtn.dataset.contractId);
+      if (!Number.isInteger(contractId) || contractId < 1) return;
+      try {
+        await downloadContractFile(contractId);
+      } catch (error) {
+        setMessage(contractReviewMsg, error.message || 'Unable to download contract file.', 'error');
+      }
     });
   }
 

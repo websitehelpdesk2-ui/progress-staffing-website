@@ -643,6 +643,14 @@
           window.loadJobsiteContracts();
         }
 
+        if (sectionId === 'jobsiteTimesheetSection' && typeof window.loadJobsiteTimesheets === 'function') {
+          window.loadJobsiteTimesheets();
+        }
+
+        if (sectionId === 'jobsiteOpenShiftsSection' && typeof window.loadJobsiteOpenShifts === 'function') {
+          window.loadJobsiteOpenShifts();
+        }
+
         if (typeof window.openPortalDrawerById === 'function') {
           window.openPortalDrawerById(sectionId);
           return;

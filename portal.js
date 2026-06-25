@@ -2105,6 +2105,8 @@ async function loadJobsiteContracts() {
 }
 
 window.loadJobsiteContracts = loadJobsiteContracts;
+window.loadJobsiteTimesheets = loadJobsiteTimesheets;
+window.loadJobsiteOpenShifts = loadJobsiteOpenShifts;
 
 async function apiFetch(url, options = {}) {
   const token = options._omitStoredToken ? null : getToken();
@@ -10329,7 +10331,11 @@ function bindJobsiteForms(currentUser) {
   const tsTbody = document.getElementById('jobsiteTimesheetsTbody');
   if (tsTbody && tsTbody.dataset.bound !== '1') {
     tsTbody.dataset.bound = '1';
-    tsTbody.addEventListener('click', (event) => {
+  }
+
+  if (tsSection && tsSection.dataset.reviewBound !== '1') {
+    tsSection.dataset.reviewBound = '1';
+    tsSection.addEventListener('click', (event) => {
       const btn = event.target.closest('[data-review-ts-id]');
       if (!btn) return;
       const tsId = asInt(btn.dataset.reviewTsId);

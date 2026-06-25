@@ -4093,7 +4093,7 @@ function setupJobsiteDashboardLayout() {
   }
 
   const middleGrid = document.createElement('div');
-  middleGrid.className = 'portal-two-col-grid';
+  middleGrid.className = 'portal-cols admin-layout-2';
   if (notificationsSection) middleGrid.appendChild(notificationsSection);
   if (messagesSection) middleGrid.appendChild(messagesSection);
   if (middleGrid.children.length) layoutHost.appendChild(middleGrid);
@@ -8884,7 +8884,9 @@ function bindEmployeeForms(currentUser) {
 async function loadJobsiteDashboard(user) {
   const fallbackData = {
     user: user || {},
-    profile: { industryTrack: getJobsiteIndustryTrack(user && user.id ? user.id : null) },
+    profile: {
+      industryTrack: String(user?.profile?.industryTrack || user?.industryTrack || 'warehouse').trim().toLowerCase() || 'warehouse',
+    },
     jobs: [],
     assignments: [],
     workerDocuments: [],

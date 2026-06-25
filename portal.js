@@ -4058,13 +4058,12 @@ function setupJobsiteDashboardLayout() {
   const messagesSection = findPortalSectionByTitles(allSections, ['Messages']);
 
   const bottomTileDefs = [
-    { label: 'Posted shifts', titles: ['Your Shifts', 'Posted Shifts'], id: 'jobsitePostedShiftsSection', summary: 'Review posted shifts' },
-    { label: 'Post a new shift', titles: ['Post a New Shift'], id: 'jobsiteCreateJobSection', summary: 'Open the shift form' },
     { label: 'Assigned workers', titles: ['Assigned Workers'], id: 'jobsiteAssignedWorkersSection', summary: 'View assigned workers' },
     { label: 'Timesheet approvals', titles: ['Timesheet Approvals'], id: 'jobsiteTimesheetSection', summary: 'Approve submitted hours' },
     { label: 'Worker documents and background', titles: ['Worker Documents & Background', 'Worker Documents and Background'], id: 'jobsiteWorkerDocumentsSection', summary: 'Review approved files' },
     { label: 'Worker signed compliance forms', titles: ['Worker Signed Compliance Forms'], id: 'jobsiteWorkerComplianceSection', summary: 'Review signed forms' },
     { label: 'Contracts', titles: ['Contracts'], id: 'jobsiteContractsSection', summary: 'Open contract drawer' },
+    { label: 'Platform open shifts', titles: ['Platform Open Shifts'], id: 'jobsiteOpenShiftsSection', summary: 'Browse available open shifts' },
     { label: 'Account Settings', titles: ['Account Settings', 'Account'], id: 'portalAccountSection', summary: 'Edit account settings' },
   ];
 
@@ -4105,6 +4104,7 @@ function setupJobsiteDashboardLayout() {
     if (!match) return;
     const tile = createJobsiteDrawerTile(match.label, match.section.id, match.summary);
     tile.addEventListener('click', () => {
+      match.section.hidden = false;
       openPortalDrawerById(match.section.id);
     });
     bottomGrid.appendChild(tile);

@@ -733,7 +733,8 @@ async function buildExecutedContractPdfBuffer(contract, executedAtDate) {
     font,
   });
 
-  return pdfDoc.save();
+  const pdfBytes = await pdfDoc.save();
+  return Buffer.from(pdfBytes);
 }
 
 async function createOrRefreshExecutedContract(contract, executedAtDate) {
@@ -744,6 +745,9 @@ async function createOrRefreshExecutedContract(contract, executedAtDate) {
 
   const buffer = await buildExecutedContractPdfBuffer(contract, executedAtDate);
   const fullPath = resolveStoredFilePath(executedStoredName);
+  if (!path.isAbsolute(fullPath)) {
+    throw new Error(`Resolved executed contract path is not absolute: ${fullPath}`);
+  }
   await fs.promises.mkdir(path.dirname(fullPath), { recursive: true });
   await fs.promises.writeFile(fullPath, Buffer.from(buffer));
   return executedStoredName;
@@ -13066,8 +13070,16 @@ app.get('/api/contracts/:id/file', authGuard(['admin', 'jobsite']), async (req, 
     try {
       downloadStoredName = await ensureExecutedContractArtifact(contract) || contract.storedName;
     } catch (error) {
+      console.error('[contract executed download] failed', {
+        contractId,
+        errorMessage: error && error.message,
+        errorStack: error && error.stack,
+      });
       logCaughtException('contract executed file preparation', error, { contractId });
-      return res.status(500).json({ error: 'Unable to prepare the executed contract download.' });
+      return res.status(500).json({
+        error: 'Unable to prepare the executed contract download.',
+        details: error && error.message ? error.message : 'Unknown error',
+      });
     }
   }
 
@@ -13223,8 +13235,16 @@ app.post('/api/admin/contracts/:id/sign', authGuard(['admin']), async (req, res)
   try {
     executedStoredName = await createOrRefreshExecutedContract(executedContractData, executedAtDate);
   } catch (error) {
+    console.error('[admin contract sign] executed pdf generation failed', {
+      contractId,
+      errorMessage: error && error.message,
+      errorStack: error && error.stack,
+    });
     logCaughtException('admin contract executed pdf generation', error, { contractId, jobsiteUserId: contract.jobsiteUserId });
-    return res.status(500).json({ error: 'Contract was signed, but the executed PDF could not be generated.' });
+    return res.status(500).json({
+      error: 'Contract was signed, but the executed PDF could not be generated.',
+      details: error && error.message ? error.message : 'Unknown error',
+    });
   }
 
   db.prepare(

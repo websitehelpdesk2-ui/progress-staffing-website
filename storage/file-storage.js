@@ -8,6 +8,10 @@ const uploadDir = configuredUploadDir
   ? path.resolve(configuredUploadDir)
   : path.resolve(process.cwd(), 'uploads');
 
+if (!path.isAbsolute(uploadDir)) {
+  throw new Error(`UPLOAD_STORAGE_DIR must resolve to an absolute path. Received: ${uploadDir}`);
+}
+
 fs.mkdirSync(uploadDir, { recursive: true });
 
 function sanitizeNamespace(namespace) {

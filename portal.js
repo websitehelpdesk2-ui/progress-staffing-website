@@ -4053,18 +4053,20 @@ function setupJobsiteDashboardLayout() {
   if (!allSections.length) return;
 
   const statRow = root.querySelector('.stat-row');
-  const topSection = findPortalSectionByTitles(allSections, ['Company Profile']);
   const notificationsSection = findPortalSectionByTitles(allSections, ['Notifications']);
   const messagesSection = findPortalSectionByTitles(allSections, ['Messages']);
 
   const bottomTileDefs = [
+    { label: 'Company Profile', titles: ['Company Profile'], id: 'jobsiteCompanyProfileSection', summary: 'View and edit company profile' },
+    { label: 'Posted shifts', titles: ['Your Shifts', 'Posted Shifts'], id: 'jobsitePostedShiftsSection', summary: 'Review posted shifts' },
+    { label: 'Post a new shift', titles: ['Post a New Shift'], id: 'jobsiteCreateJobSection', summary: 'Open the shift form' },
     { label: 'Assigned workers', titles: ['Assigned Workers'], id: 'jobsiteAssignedWorkersSection', summary: 'View assigned workers' },
     { label: 'Timesheet approvals', titles: ['Timesheet Approvals'], id: 'jobsiteTimesheetSection', summary: 'Approve submitted hours' },
     { label: 'Worker documents and background', titles: ['Worker Documents & Background', 'Worker Documents and Background'], id: 'jobsiteWorkerDocumentsSection', summary: 'Review approved files' },
     { label: 'Worker signed compliance forms', titles: ['Worker Signed Compliance Forms'], id: 'jobsiteWorkerComplianceSection', summary: 'Review signed forms' },
     { label: 'Contracts', titles: ['Contracts'], id: 'jobsiteContractsSection', summary: 'Open contract drawer' },
     { label: 'Platform open shifts', titles: ['Platform Open Shifts'], id: 'jobsiteOpenShiftsSection', summary: 'Browse available open shifts' },
-    { label: 'Account Settings', titles: ['Account Settings', 'Account'], id: 'portalAccountSection', summary: 'Edit account settings' },
+    { label: 'Account', titles: ['Account Settings', 'Account'], id: 'portalAccountSection', summary: 'Edit account settings' },
   ];
 
   const matchedBottomSections = bottomTileDefs
@@ -4078,7 +4080,6 @@ function setupJobsiteDashboardLayout() {
     })
     .filter(Boolean);
 
-  if (topSection) topSection.dataset.preserveDrawerLayout = '1';
   if (notificationsSection) notificationsSection.dataset.preserveDrawerLayout = '1';
   if (messagesSection) messagesSection.dataset.preserveDrawerLayout = '1';
 
@@ -4087,15 +4088,11 @@ function setupJobsiteDashboardLayout() {
   const layoutHost = document.createElement('div');
   layoutHost.className = 'portal-jobsite-layout';
 
-  if (topSection) {
-    layoutHost.appendChild(topSection);
-  }
-
-  const middleGrid = document.createElement('div');
-  middleGrid.className = 'portal-cols admin-layout-2';
-  if (notificationsSection) middleGrid.appendChild(notificationsSection);
-  if (messagesSection) middleGrid.appendChild(messagesSection);
-  if (middleGrid.children.length) layoutHost.appendChild(middleGrid);
+  const topGrid = document.createElement('div');
+  topGrid.className = 'portal-cols admin-layout-2';
+  if (notificationsSection) topGrid.appendChild(notificationsSection);
+  if (messagesSection) topGrid.appendChild(messagesSection);
+  if (topGrid.children.length) layoutHost.appendChild(topGrid);
 
   const bottomGrid = document.createElement('section');
   bottomGrid.className = 'portal-widget-grid';
@@ -4116,7 +4113,7 @@ function setupJobsiteDashboardLayout() {
   drawerStash.hidden = true;
 
   allSections.forEach((section) => {
-    if (section === topSection || section === notificationsSection || section === messagesSection) {
+    if (section === notificationsSection || section === messagesSection) {
       return;
     }
 

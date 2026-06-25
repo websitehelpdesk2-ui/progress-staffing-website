@@ -1110,6 +1110,7 @@ let portalRealtimeReconnectTimer = null;
 let portalRealtimeReconnectAttempts = 0;
 let portalWidgetLayoutBound = false;
 let portalJobsiteLayoutBound = false;
+let jobsiteContractsCache = [];
 let portalDrawerOverlay = null;
 let portalDrawerContent = null;
 let portalDrawerStash = null;
@@ -2069,7 +2070,8 @@ function openAdminContractReview(contract) {
 }
 
 function renderJobsiteContracts(data) {
-  const rows = (data || []).map((item) => `
+  jobsiteContractsCache = Array.isArray(data) ? data : [];
+  const rows = jobsiteContractsCache.map((item) => `
     <tr>
       <td>
         <a class="link" href="${escapeHtml(item.fileUrl)}" target="_blank" rel="noopener">${escapeHtml(item.originalName || 'Contract')}</a>
@@ -2079,7 +2081,7 @@ function renderJobsiteContracts(data) {
       <td>${item.clientOpenedAt ? escapeHtml(formatDateTime(item.clientOpenedAt)) : '<span class="badge badge--gray">Not Opened</span>'}</td>
       <td>${contractPartyStatus(item.clientSignatureName, item.clientSignedAt)}</td>
       <td>${contractPartyStatus(item.adminSignatureName, item.adminSignedAt)}</td>
-      <td><button class="button button--ghost button--sm" type="button" data-jobsite-contract-review-id="${escapeHtml(item.id)}">Review</button></td>
+      <td><button class="button button--ghost button--sm" type="button" data-jobsite-contract-review-id="${escapeHtml(item.id)}" data-contract-id="${escapeHtml(item.id)}">Review</button></td>
     </tr>
   `);
   setTableRows('jobsiteContractsTbody', rows, 6, 'No contracts available.');
@@ -3548,12 +3550,25 @@ async function openJobsiteContractReviewById(contractId) {
 
   const contractsSection = document.getElementById('jobsiteContractsSection');
   if (contractsSection) {
-    openPortalDrawerById('jobsiteContractsSection');
+    const alreadyInDrawer = portalDrawerContent && portalDrawerContent.contains(contractsSection);
+    if (!alreadyInDrawer) {
+      contractsSection.hidden = false;
+      openPortalDrawerById('jobsiteContractsSection');
+    }
   }
 
-  const res = await apiFetch('/api/portal/jobsite/contracts');
-  const payload = await res.json().catch(() => ({}));
-  const contract = (Array.isArray(payload.data) ? payload.data : []).find((item) => Number(item.id) === parsedId);
+  let contract = jobsiteContractsCache.find((item) => Number(item.id) === parsedId);
+  if (!contract) {
+    try {
+      const res = await apiFetch('/api/portal/jobsite/contracts');
+      if (!res.ok) return;
+      const payload = await res.json().catch(() => ({}));
+      jobsiteContractsCache = Array.isArray(payload.data) ? payload.data : [];
+      contract = jobsiteContractsCache.find((item) => Number(item.id) === parsedId);
+    } catch {
+      return;
+    }
+  }
   if (!contract) return;
 
   const contractReviewPanel = document.getElementById('jobsiteContractReviewPanel');
@@ -10422,7 +10437,12 @@ function bindJobsiteForms(currentUser) {
 
   if (contractsTbody && contractsTbody.dataset.bound !== '1') {
     contractsTbody.dataset.bound = '1';
-    contractsTbody.addEventListener('click', async (event) => {
+  }
+
+  const contractsSectionEl = document.getElementById('jobsiteContractsSection');
+  if (contractsSectionEl && contractsSectionEl.dataset.reviewBound !== '1') {
+    contractsSectionEl.dataset.reviewBound = '1';
+    contractsSectionEl.addEventListener('click', async (event) => {
       const reviewBtn = event.target.closest('[data-jobsite-contract-review-id]');
       if (!reviewBtn) return;
       const contractId = asInt(reviewBtn.dataset.jobsiteContractReviewId);

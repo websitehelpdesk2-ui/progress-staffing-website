@@ -3563,14 +3563,15 @@ async function openJobsiteContractReviewById(contractId) {
 
   hideMessage(contractReviewMsg);
   const status = String(contract.status || 'pending');
+  const contractFileUrl = String(contract.fileUrl || `/api/contracts/${contract.id}/file`);
   let renewalInfo = '';
   if (contract.renewalDueAt) {
     renewalInfo = ` | Renewal Due: ${escapeHtml(formatDateOnly(contract.renewalDueAt))}`;
   }
   contractReviewMeta.innerHTML = `Facility: ${escapeHtml(contract.clientCompanyName || contract.clientContactName || contract.clientUserName || 'Facility')} | Status: ${statusBadge(status)} | Viewed: ${contract.clientOpenedAt ? escapeHtml(formatDateTime(contract.clientOpenedAt)) : 'No'} | Admin Signed: ${contract.adminSignedAt ? escapeHtml(formatDateTime(contract.adminSignedAt)) : 'No'}${renewalInfo}`;
-  contractViewLink.href = String(contract.fileUrl || '#');
+  contractViewLink.href = contractFileUrl;
   if (contractDownloadBtn) {
-    contractDownloadBtn.href = String(contract.fileUrl || '#');
+    contractDownloadBtn.href = contractFileUrl;
     contractDownloadBtn.style.display = status === 'executed' ? '' : 'none';
   }
   contractViewLink.dataset.contractId = String(contract.id);

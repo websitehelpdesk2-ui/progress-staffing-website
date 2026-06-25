@@ -4048,6 +4048,10 @@ function setupJobsiteDashboardLayout() {
 
   const root = document.querySelector('main .container');
   if (!root) return;
+  if (root.querySelector('#jobsiteDrawerTileGrid')) {
+    portalJobsiteLayoutBound = true;
+    return;
+  }
 
   const allSections = Array.from(root.querySelectorAll('.portal-section'));
   if (!allSections.length) return;

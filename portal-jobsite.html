@@ -45,8 +45,92 @@
         <div class="stat-card"><span class="stat-card__label">Closed Shifts</span><span class="stat-card__value" id="statClosedJobs">—</span></div>
       </div>
 
+      <div class="portal-cols admin-layout-2">
+        <div class="portal-section" id="jobsiteNotificationsSection">
+          <div class="portal-section__header">
+            <h2 class="portal-section__title">Notifications</h2>
+          </div>
+          <div id="portalNotificationStatus" class="form-message" aria-live="polite"></div>
+          <p id="portalNotificationDescription" class="admin-section-copy">Enable browser notifications to receive alerts when contracts, messages, and timesheet updates need your attention.</p>
+          <div class="form-actions portal-form-actions-notif-enable">
+            <button id="portalNotificationEnableBtn" class="button button--ghost button--sm" type="button">Enable Push Notifications</button>
+          </div>
+          <div class="notify-prefs-block">
+            <p class="notify-prefs-block__heading">Notification Channels</p>
+            <div class="form-row notify-toggle-row">
+              <span class="notify-toggle__label">Email Notifications</span>
+              <label class="toggle-switch" for="portalNotifyEmailEnabled">
+                <input id="portalNotifyEmailEnabled" name="notifyEmailEnabled" type="checkbox" aria-label="Email Notifications" title="Email Notifications" />
+                <span class="toggle-switch__track"></span>
+              </label>
+            </div>
+            <div class="form-row notify-toggle-row">
+              <span class="notify-toggle__label">Text Notifications</span>
+              <label class="toggle-switch" for="portalNotifySmsEnabled">
+                <input id="portalNotifySmsEnabled" name="notifySmsEnabled" type="checkbox" aria-label="Text Notifications" title="Text Notifications" />
+                <span class="toggle-switch__track"></span>
+              </label>
+            </div>
+            <div class="form-row notify-toggle-row">
+              <span class="notify-toggle__label">App Push Notifications</span>
+              <label class="toggle-switch" for="portalNotifyPushEnabled">
+                <input id="portalNotifyPushEnabled" name="notifyPushEnabled" type="checkbox" aria-label="App Push Notifications" title="App Push Notifications" />
+                <span class="toggle-switch__track"></span>
+              </label>
+            </div>
+          </div>
+          <div class="portal-notifications-end-row">
+            <button id="portalNotificationsClearReadBtn" class="button button--ghost button--sm" type="button">Clear Read</button>
+          </div>
+          <div class="portal-table-wrap portal-table-wrap--mt-sm">
+            <table class="portal-table">
+              <thead><tr><th>When</th><th>Type</th><th>Activity</th><th>Status</th><th>Action</th><th></th></tr></thead>
+              <tbody id="portalNotificationsList"><tr><td colspan="6">Loading...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="portal-section" id="jobsiteMessagesSection">
+          <div class="portal-section__header">
+            <h2 class="portal-section__title">Messages</h2>
+          </div>
+          <form id="portalMessageForm" class="contact-form portal-form-mb" novalidate>
+            <div id="portalMessageStatus" class="form-message" aria-live="polite"></div>
+            <div class="form-row">
+              <label for="portalMessageRecipient">Recipient</label>
+              <select id="portalMessageRecipient" name="recipientUserId" required>
+                <option value="">Select recipient</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <label for="portalMessageBody">Message</label>
+              <textarea id="portalMessageBody" name="body" rows="3" placeholder="Type your message"></textarea>
+            </div>
+            <div class="form-actions">
+              <button class="button" type="submit">Send Message</button>
+            </div>
+          </form>
+          <div id="portalMessagesList" class="portal-chat" aria-live="polite">
+            <div class="portal-chat__empty">Loading conversation...</div>
+          </div>
+        </div>
+      </div>
+
+      <section class="portal-widget-grid" id="jobsiteDrawerTileGrid" aria-label="Client Dashboard Navigation">
+        <button class="portal-widget-tile" type="button" data-drawer-section-id="jobsiteCompanyProfileSection"><span class="portal-widget-tile__title">Company Profile</span><span class="portal-widget-tile__summary">View and edit company profile</span><span class="portal-widget-tile__hint">Tap to open</span></button>
+        <button class="portal-widget-tile" type="button" data-drawer-section-id="jobsitePostedShiftsSection"><span class="portal-widget-tile__title">Posted shifts</span><span class="portal-widget-tile__summary">Review posted shifts</span><span class="portal-widget-tile__hint">Tap to open</span></button>
+        <button class="portal-widget-tile" type="button" data-drawer-section-id="jobsiteCreateJobSection"><span class="portal-widget-tile__title">Post a new shift</span><span class="portal-widget-tile__summary">Open the shift form</span><span class="portal-widget-tile__hint">Tap to open</span></button>
+        <button class="portal-widget-tile" type="button" data-drawer-section-id="jobsiteAssignedWorkersSection"><span class="portal-widget-tile__title">Assigned workers</span><span class="portal-widget-tile__summary">View assigned workers</span><span class="portal-widget-tile__hint">Tap to open</span></button>
+        <button class="portal-widget-tile" type="button" data-drawer-section-id="jobsiteTimesheetSection"><span class="portal-widget-tile__title">Timesheet approvals</span><span class="portal-widget-tile__summary">Approve submitted hours</span><span class="portal-widget-tile__hint">Tap to open</span></button>
+        <button class="portal-widget-tile" type="button" data-drawer-section-id="jobsiteWorkerDocumentsSection"><span class="portal-widget-tile__title">Worker documents and background</span><span class="portal-widget-tile__summary">Review approved files</span><span class="portal-widget-tile__hint">Tap to open</span></button>
+        <button class="portal-widget-tile" type="button" data-drawer-section-id="jobsiteWorkerComplianceSection"><span class="portal-widget-tile__title">Worker signed compliance forms</span><span class="portal-widget-tile__summary">Review signed forms</span><span class="portal-widget-tile__hint">Tap to open</span></button>
+        <button class="portal-widget-tile" type="button" data-drawer-section-id="jobsiteContractsSection"><span class="portal-widget-tile__title">Contracts</span><span class="portal-widget-tile__summary">Open contract drawer</span><span class="portal-widget-tile__hint">Tap to open</span></button>
+        <button class="portal-widget-tile" type="button" data-drawer-section-id="jobsiteOpenShiftsSection"><span class="portal-widget-tile__title">Platform open shifts</span><span class="portal-widget-tile__summary">Browse available shifts</span><span class="portal-widget-tile__hint">Tap to open</span></button>
+        <button class="portal-widget-tile" type="button" data-drawer-section-id="portalAccountSection"><span class="portal-widget-tile__title">Account</span><span class="portal-widget-tile__summary">Edit account settings</span><span class="portal-widget-tile__hint">Tap to open</span></button>
+      </section>
+
       <!-- Profile -->
-      <div class="portal-section" id="jobsiteCompanyProfileSection">
+      <div class="portal-section" id="jobsiteCompanyProfileSection" hidden>
         <div class="portal-section__header">
           <h2 class="portal-section__title">Company Profile</h2>
           <button id="jobsiteProfileEditBtn" class="button button--ghost button--sm" type="button">Edit</button>
@@ -92,15 +176,15 @@
       </div>
 
       <!-- Jobs list + Create form side by side -->
-      <div class="portal-cols">
-        <div class="portal-section portal-section--flex2">
+      <div class="portal-cols" hidden>
+        <div class="portal-section portal-section--flex2" id="jobsitePostedShiftsSection" hidden>
           <div class="portal-section__header">
             <h2 class="portal-section__title">Your Shifts</h2>
           </div>
           <div class="job-cards-list" id="jobsiteJobs"><p class="empty-state">No jobs posted yet.</p></div>
         </div>
 
-        <div class="portal-section">
+        <div class="portal-section" id="jobsiteCreateJobSection" hidden>
           <div class="portal-section__header">
             <h2 class="portal-section__title">Post a New Shift</h2>
           </div>
@@ -261,7 +345,7 @@
         </div>
       </div>
 
-      <div class="portal-section" id="jobsiteAssignedWorkersSection">
+      <div class="portal-section" id="jobsiteAssignedWorkersSection" hidden>
         <div class="portal-section__header">
           <h2 class="portal-section__title">Assigned Workers</h2>
         </div>
@@ -274,7 +358,7 @@
       </div>
 
       <!-- Timesheet Approvals -->
-      <div class="portal-section" id="jobsiteTimesheetSection">
+      <div class="portal-section" id="jobsiteTimesheetSection" hidden>
         <div class="portal-section__header">
           <h2 class="portal-section__title">Timesheet Approvals</h2>
         </div>
@@ -317,7 +401,7 @@
         </div>
       </div>
 
-      <div class="portal-section" id="jobsiteWorkerDocumentsSection">
+      <div class="portal-section" id="jobsiteWorkerDocumentsSection" hidden>
         <div class="portal-section__header">
           <h2 class="portal-section__title">Worker Documents & Background</h2>
         </div>
@@ -330,7 +414,7 @@
         </div>
       </div>
 
-      <div class="portal-section" id="jobsiteWorkerComplianceSection">
+      <div class="portal-section" id="jobsiteWorkerComplianceSection" hidden>
         <div class="portal-section__header">
           <h2 class="portal-section__title">Worker Signed Compliance Forms</h2>
         </div>
@@ -343,7 +427,7 @@
         </div>
       </div>
 
-      <div class="portal-section" id="jobsiteContractsSection">
+      <div class="portal-section" id="jobsiteContractsSection" hidden>
         <div class="portal-section__header">
           <h2 class="portal-section__title">Contracts</h2>
         </div>
@@ -423,7 +507,7 @@
         </div>
       </div>
 
-      <div class="portal-two-col-grid">
+      <div class="portal-two-col-grid" hidden>
         <div class="portal-section" id="jobsiteMiscDocsSection" hidden>
           <div class="portal-section__header">
             <h2 class="portal-section__title">Documents from Agency</h2>
@@ -436,7 +520,7 @@
             </table>
           </div>
         </div>
-        <div class="portal-section" id="jobsiteOpenShiftsSection">
+        <div class="portal-section" id="jobsiteOpenShiftsSection" hidden>
           <div class="portal-section__header">
             <h2 class="portal-section__title">Platform Open Shifts</h2>
           </div>
@@ -449,78 +533,7 @@
         </div>
       </div>
 
-        <div class="portal-two-col-grid">
-        <div class="portal-section">
-          <div class="portal-section__header">
-            <h2 class="portal-section__title">Notifications</h2>
-          </div>
-          <div id="portalNotificationStatus" class="form-message" aria-live="polite"></div>
-          <p id="portalNotificationDescription" class="admin-section-copy">Enable browser notifications to receive alerts when contracts, messages, and timesheet updates need your attention.</p>
-          <div class="form-actions portal-form-actions-notif-enable">
-            <button id="portalNotificationEnableBtn" class="button button--ghost button--sm" type="button">Enable Push Notifications</button>
-          </div>
-          <div class="notify-prefs-block">
-            <p class="notify-prefs-block__heading">Notification Channels</p>
-            <div class="form-row notify-toggle-row">
-              <span class="notify-toggle__label">Email Notifications</span>
-              <label class="toggle-switch" for="portalNotifyEmailEnabled">
-                <input id="portalNotifyEmailEnabled" name="notifyEmailEnabled" type="checkbox" aria-label="Email Notifications" title="Email Notifications" />
-                <span class="toggle-switch__track"></span>
-              </label>
-            </div>
-            <div class="form-row notify-toggle-row">
-              <span class="notify-toggle__label">Text Notifications</span>
-              <label class="toggle-switch" for="portalNotifySmsEnabled">
-                <input id="portalNotifySmsEnabled" name="notifySmsEnabled" type="checkbox" aria-label="Text Notifications" title="Text Notifications" />
-                <span class="toggle-switch__track"></span>
-              </label>
-            </div>
-            <div class="form-row notify-toggle-row">
-              <span class="notify-toggle__label">App Push Notifications</span>
-              <label class="toggle-switch" for="portalNotifyPushEnabled">
-                <input id="portalNotifyPushEnabled" name="notifyPushEnabled" type="checkbox" aria-label="App Push Notifications" title="App Push Notifications" />
-                <span class="toggle-switch__track"></span>
-              </label>
-            </div>
-          </div>
-          <div class="portal-notifications-end-row">
-            <button id="portalNotificationsClearReadBtn" class="button button--ghost button--sm" type="button">Clear Read</button>
-          </div>
-          <div class="portal-table-wrap portal-table-wrap--mt-sm">
-            <table class="portal-table">
-              <thead><tr><th>When</th><th>Type</th><th>Activity</th><th>Status</th><th>Action</th><th></th></tr></thead>
-              <tbody id="portalNotificationsList"><tr><td colspan="6">Loading...</td></tr></tbody>
-            </table>
-          </div>
-        </div>
-
-        <div class="portal-section">
-          <div class="portal-section__header">
-            <h2 class="portal-section__title">Messages</h2>
-          </div>
-          <form id="portalMessageForm" class="contact-form portal-form-mb" novalidate>
-            <div id="portalMessageStatus" class="form-message" aria-live="polite"></div>
-            <div class="form-row">
-              <label for="portalMessageRecipient">Recipient</label>
-              <select id="portalMessageRecipient" name="recipientUserId" required>
-                <option value="">Select recipient</option>
-              </select>
-            </div>
-            <div class="form-row">
-              <label for="portalMessageBody">Message</label>
-              <textarea id="portalMessageBody" name="body" rows="3" placeholder="Type your message"></textarea>
-            </div>
-            <div class="form-actions">
-              <button class="button" type="submit">Send Message</button>
-            </div>
-          </form>
-          <div id="portalMessagesList" class="portal-chat" aria-live="polite">
-            <div class="portal-chat__empty">Loading conversation...</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="portal-section" id="portalAccountSection">
+      <div class="portal-section" id="portalAccountSection" hidden>
         <div class="portal-section__header">
           <h2 id="portalAccountSectionTitle" class="portal-section__title">Account</h2>
         </div>
@@ -611,6 +624,33 @@
   </main>
 
   <script src="theme.js"></script>
-  <script src="portal.js?v=20260408-3"></script>
+  <script src="portal.js?v=20260625-1"></script>
+  <script>
+    (function () {
+      const tileGrid = document.getElementById('jobsiteDrawerTileGrid');
+      if (!tileGrid) return;
+
+      tileGrid.addEventListener('click', (event) => {
+        const tile = event.target.closest('[data-drawer-section-id]');
+        if (!tile) return;
+
+        const sectionId = tile.getAttribute('data-drawer-section-id');
+        if (!sectionId) return;
+
+        const section = document.getElementById(sectionId);
+        if (section) section.hidden = false;
+
+        if (typeof window.openPortalDrawerById === 'function') {
+          window.openPortalDrawerById(sectionId);
+          return;
+        }
+
+        if (section) {
+          section.hidden = false;
+          section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      });
+    })();
+  </script>
 </body>
 </html>

@@ -38,6 +38,52 @@
   <main>
     <div class="container portal-main-shell--lg">
 
+      <!-- Profile -->
+      <div class="portal-section" id="jobsiteCompanyProfileSection">
+        <div class="portal-section__header">
+          <h2 class="portal-section__title">Company Profile</h2>
+          <button id="jobsiteProfileEditBtn" class="button button--ghost button--sm" type="button">Edit</button>
+        </div>
+        <div class="profile-info" id="jobsiteProfile"><p class="empty-state">Loading...</p></div>
+
+        <!-- Edit form (hidden by default) -->
+        <form id="jobsiteProfileEditForm" class="contact-form" novalidate hidden>
+          <div id="jobsiteProfileEditMessage" class="form-message" aria-live="polite"></div>
+          <div class="form-row">
+            <label for="jobsiteEditCompanyName">Company Name</label>
+            <input id="jobsiteEditCompanyName" name="companyName" type="text" placeholder="Your company name" />
+          </div>
+          <div class="form-row">
+            <label for="jobsiteEditContactName">Contact Name</label>
+            <input id="jobsiteEditContactName" name="contactName" type="text" placeholder="Contact person name" />
+          </div>
+          <div class="form-row">
+            <label for="jobsiteEditPhone">Phone</label>
+            <input id="jobsiteEditPhone" name="phone" type="tel" placeholder="(123) 456-7890" />
+          </div>
+          <div class="form-row">
+            <label for="jobsiteEditAddress">Street Address</label>
+            <input id="jobsiteEditAddress" name="address" type="text" placeholder="123 Main St" />
+          </div>
+          <div class="form-row">
+            <label for="jobsiteEditCity">City</label>
+            <input id="jobsiteEditCity" name="city" type="text" placeholder="Las Vegas" />
+          </div>
+          <div class="form-row">
+            <label for="jobsiteEditState">State</label>
+            <input id="jobsiteEditState" name="state" type="text" maxlength="2" placeholder="NV" />
+          </div>
+          <div class="form-row">
+            <label for="jobsiteEditZip">ZIP Code</label>
+            <input id="jobsiteEditZip" name="zip" type="text" inputmode="numeric" maxlength="10" placeholder="89101" />
+          </div>
+          <div class="portal-btn-row">
+            <button type="submit" class="button">Save Profile</button>
+            <button id="jobsiteProfileEditCancel" type="button" class="button button--ghost">Cancel</button>
+          </div>
+        </form>
+      </div>
+
       <!-- Stats -->
       <div class="stat-row">
         <div class="stat-card"><span class="stat-card__label">Total Shifts</span><span class="stat-card__value" id="statTotalJobs">—</span></div>
@@ -117,7 +163,6 @@
       </div>
 
       <section class="portal-widget-grid" id="jobsiteDrawerTileGrid" aria-label="Client Dashboard Navigation">
-        <button class="portal-widget-tile" type="button" data-drawer-section-id="jobsiteCompanyProfileSection"><span class="portal-widget-tile__title">Company Profile</span><span class="portal-widget-tile__summary">View and edit company profile</span><span class="portal-widget-tile__hint">Tap to open</span></button>
         <button class="portal-widget-tile" type="button" data-drawer-section-id="jobsitePostedShiftsSection"><span class="portal-widget-tile__title">Posted shifts</span><span class="portal-widget-tile__summary">Review posted shifts</span><span class="portal-widget-tile__hint">Tap to open</span></button>
         <button class="portal-widget-tile" type="button" data-drawer-section-id="jobsiteCreateJobSection"><span class="portal-widget-tile__title">Post a new shift</span><span class="portal-widget-tile__summary">Open the shift form</span><span class="portal-widget-tile__hint">Tap to open</span></button>
         <button class="portal-widget-tile" type="button" data-drawer-section-id="jobsiteAssignedWorkersSection"><span class="portal-widget-tile__title">Assigned workers</span><span class="portal-widget-tile__summary">View assigned workers</span><span class="portal-widget-tile__hint">Tap to open</span></button>
@@ -128,52 +173,6 @@
         <button class="portal-widget-tile" type="button" data-drawer-section-id="jobsiteOpenShiftsSection"><span class="portal-widget-tile__title">Platform open shifts</span><span class="portal-widget-tile__summary">Browse available shifts</span><span class="portal-widget-tile__hint">Tap to open</span></button>
         <button class="portal-widget-tile" type="button" data-drawer-section-id="portalAccountSection"><span class="portal-widget-tile__title">Account</span><span class="portal-widget-tile__summary">Edit account settings</span><span class="portal-widget-tile__hint">Tap to open</span></button>
       </section>
-
-      <!-- Profile -->
-      <div class="portal-section" id="jobsiteCompanyProfileSection" hidden>
-        <div class="portal-section__header">
-          <h2 class="portal-section__title">Company Profile</h2>
-          <button id="jobsiteProfileEditBtn" class="button button--ghost button--sm" type="button">Edit</button>
-        </div>
-        <div class="profile-info" id="jobsiteProfile"><p class="empty-state">Loading...</p></div>
-        
-        <!-- Edit form (hidden by default) -->
-        <form id="jobsiteProfileEditForm" class="contact-form" novalidate hidden>
-          <div id="jobsiteProfileEditMessage" class="form-message" aria-live="polite"></div>
-          <div class="form-row">
-            <label for="jobsiteEditCompanyName">Company Name</label>
-            <input id="jobsiteEditCompanyName" name="companyName" type="text" placeholder="Your company name" />
-          </div>
-          <div class="form-row">
-            <label for="jobsiteEditContactName">Contact Name</label>
-            <input id="jobsiteEditContactName" name="contactName" type="text" placeholder="Contact person name" />
-          </div>
-          <div class="form-row">
-            <label for="jobsiteEditPhone">Phone</label>
-            <input id="jobsiteEditPhone" name="phone" type="tel" placeholder="(123) 456-7890" />
-          </div>
-          <div class="form-row">
-            <label for="jobsiteEditAddress">Street Address</label>
-            <input id="jobsiteEditAddress" name="address" type="text" placeholder="123 Main St" />
-          </div>
-          <div class="form-row">
-            <label for="jobsiteEditCity">City</label>
-            <input id="jobsiteEditCity" name="city" type="text" placeholder="Las Vegas" />
-          </div>
-          <div class="form-row">
-            <label for="jobsiteEditState">State</label>
-            <input id="jobsiteEditState" name="state" type="text" maxlength="2" placeholder="NV" />
-          </div>
-          <div class="form-row">
-            <label for="jobsiteEditZip">ZIP Code</label>
-            <input id="jobsiteEditZip" name="zip" type="text" inputmode="numeric" maxlength="10" placeholder="89101" />
-          </div>
-          <div class="portal-btn-row">
-            <button type="submit" class="button">Save Profile</button>
-            <button id="jobsiteProfileEditCancel" type="button" class="button button--ghost">Cancel</button>
-          </div>
-        </form>
-      </div>
 
       <!-- Jobs list + Create form side by side -->
       <div class="portal-cols" hidden>

@@ -5705,11 +5705,72 @@ async function handlePortalLoginSubmit(event) {
     : routeForRole(data.user.role, data.user.portalScope));
 }
 
+async function handleResendVerificationEmail(event) {
+  event.preventDefault();
+
+  const button = event.currentTarget;
+  const form = button ? button.closest('form') : null;
+  const msg = document.getElementById('portalLoginMessage');
+  const emailInput = form ? form.querySelector('#email') : document.getElementById('email');
+  const email = String(emailInput && emailInput.value || '').trim();
+
+  hideMessage(msg);
+
+  if (!email) {
+    setMessage(msg, 'Enter your email address first.', 'error');
+    return;
+  }
+
+  const previousText = button ? button.textContent : '';
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Sending...';
+  }
+
+  try {
+    const res = await apiFetch('/api/auth/resend-verification', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+      _skipAuthRedirect: true,
+    });
+
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setMessage(msg, payload.error || payload.message || 'Verification email could not be sent.', 'error');
+      return;
+    }
+
+    setMessage(msg, payload.message || 'Verification email sent. Check your inbox and spam folder.', 'success');
+  } catch (error) {
+    console.error('[resend-verification] request failed', {
+      email,
+      error: {
+        name: error && error.name ? error.name : null,
+        message: error && error.message ? error.message : String(error),
+        stack: error && error.stack ? error.stack : null,
+      },
+      rawError: error,
+    });
+    setMessage(msg, 'Verification email could not be sent right now. Please try again shortly.', 'error');
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = previousText || 'Resend Verification Email';
+    }
+  }
+}
+
 function bindAuthEntryForms() {
   const loginForm = document.getElementById('portalLoginForm');
   if (loginForm && loginForm.dataset.bound !== '1') {
     loginForm.dataset.bound = '1';
     loginForm.addEventListener('submit', handlePortalLoginSubmit);
+    const resendButton = document.getElementById('resendVerificationEmailBtn');
+    if (resendButton && resendButton.dataset.bound !== '1') {
+      resendButton.dataset.bound = '1';
+      resendButton.addEventListener('click', handleResendVerificationEmail);
+    }
   }
 
   const registerForm = document.getElementById('portalRegisterForm');

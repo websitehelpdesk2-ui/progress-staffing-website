@@ -5367,6 +5367,14 @@ const loginLimiter = createLimiter(15 * 60 * 1000, 60, 'Too many login attempts.
     return `login:${normalizedEmail || 'anonymous'}:${ipKey}`;
   },
 });
+const resendVerificationLimiter = createLimiter(15 * 60 * 1000, 5, 'Too many verification resend attempts. Please try again later.', {
+  skipSuccessfulRequests: true,
+  keyGenerator: (req) => {
+    const normalizedEmail = String((req.body && req.body.email) || '').trim().toLowerCase();
+    const ipKey = rateLimit.ipKeyGenerator(req.ip || '');
+    return `resend-verification:${normalizedEmail || 'anonymous'}:${ipKey}`;
+  },
+});
 const registerLimiter = createLimiter(15 * 60 * 1000, 30, 'Too many registration attempts. Please try again later.', {
   skipSuccessfulRequests: true,
   keyGenerator: (req) => {
@@ -5385,6 +5393,37 @@ const messageSendLimiter = createLimiter(5 * 60 * 1000, 200, 'Too many messages 
     return rateLimit.ipKeyGenerator(req.ip || '');
   },
 });
+const resendVerificationCooldowns = new Map();
+const RESEND_VERIFICATION_COOLDOWN_MS = 60 * 1000;
+
+function getResendVerificationCooldownKey(email) {
+  return String(email || '').trim().toLowerCase();
+}
+
+function isResendVerificationOnCooldown(email) {
+  const key = getResendVerificationCooldownKey(email);
+  if (!key) return false;
+  const expiresAt = resendVerificationCooldowns.get(key);
+  if (!expiresAt) return false;
+  if (Date.now() >= expiresAt) {
+    resendVerificationCooldowns.delete(key);
+    return false;
+  }
+  return true;
+}
+
+function setResendVerificationCooldown(email) {
+  const key = getResendVerificationCooldownKey(email);
+  if (!key) return;
+  const expiresAt = Date.now() + RESEND_VERIFICATION_COOLDOWN_MS;
+  resendVerificationCooldowns.set(key, expiresAt);
+  setTimeout(() => {
+    const current = resendVerificationCooldowns.get(key);
+    if (current === expiresAt) {
+      resendVerificationCooldowns.delete(key);
+    }
+  }, RESEND_VERIFICATION_COOLDOWN_MS + 1000).unref?.();
+}
 
 app.use(helmet({
   contentSecurityPolicy: false,
@@ -6698,7 +6737,7 @@ app.post('/api/register', (req, res) => {
   res.redirect(307, '/api/auth/register');
 });
 
-app.post('/api/auth/resend-verification', async (req, res) => {
+app.post('/api/auth/resend-verification', resendVerificationLimiter, async (req, res) => {
   const email = String(req.body && req.body.email || '').trim().toLowerCase();
   if (!email) {
     return res.status(400).json({ error: 'Email is required.' });
@@ -6712,15 +6751,15 @@ app.post('/api/auth/resend-verification', async (req, res) => {
     return res.json({ sent: true, message: 'If an eligible account exists, a verification email has been sent.' });
   }
 
-  if (!['employee', 'jobsite'].includes(String(user.role || '').trim().toLowerCase())) {
-    return res.json({ sent: true, message: 'If an eligible account exists, a verification email has been sent.' });
-  }
-
   if (Number(user.isVerified) === 1) {
     return res.status(400).json({ error: 'This account is already verified.' });
   }
 
   try {
+    if (isResendVerificationOnCooldown(email)) {
+      return res.status(429).json({ error: 'Please wait a minute before requesting another verification email.' });
+    }
+    setResendVerificationCooldown(email);
     const verificationResult = await sendAccountVerificationEmail(user, 'manual_resend');
     return res.json({
       sent: true,
@@ -6729,7 +6768,19 @@ app.post('/api/auth/resend-verification', async (req, res) => {
       message: 'Verification email sent.',
     });
   } catch (error) {
-    logCaughtException('resend verification email', error, { email });
+    console.error('[resend-verification] email send failed', {
+      email,
+      userId: user && user.id,
+      error: {
+        name: error && error.name ? error.name : null,
+        message: error && error.message ? error.message : String(error),
+        code: error && error.code ? error.code : null,
+        stack: error && error.stack ? error.stack : null,
+        responseBody: error && (error.responseBody || error.ResponseBody || error.response) ? (error.responseBody || error.ResponseBody || error.response) : null,
+      },
+      rawError: error,
+    });
+    logCaughtException('resend verification email', error, { email, userId: user && user.id });
     return res.status(502).json({ error: 'Verification email could not be sent right now. Please try again shortly.' });
   }
 });

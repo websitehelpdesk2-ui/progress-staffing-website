@@ -6506,7 +6506,17 @@ app.post('/api/auth/register', async (req, res) => {
     }
 
     try {
+      console.info('[registration] resending verification email', {
+        userId: existingUser.id,
+        email: normalizedEmail,
+        reason: 'registration_retry',
+      });
       const verificationResult = await sendAccountVerificationEmail(existingUser, 'registration_retry');
+      console.info('[registration] verification email resend completed', {
+        userId: existingUser.id,
+        email: normalizedEmail,
+        verificationExpiresAt: verificationResult.expiresAt,
+      });
       return res.status(202).json({
         id: existingUser.id,
         role: normalizedRole,
@@ -6633,11 +6643,21 @@ app.post('/api/auth/register', async (req, res) => {
       role: normalizedRole,
     });
 
+    console.info('[registration] sending verification email', {
+      userId,
+      email: normalizedEmail,
+      reason: 'registration',
+    });
     const verificationResult = await sendAccountVerificationEmail({
       id: userId,
       name: normalizedName,
       email: normalizedEmail,
     }, 'registration');
+    console.info('[registration] verification email sent', {
+      userId,
+      email: normalizedEmail,
+      verificationExpiresAt: verificationResult.expiresAt,
+    });
 
     emitSocketEventToAdmins('new-user-signup', { id: userId, email: normalizedEmail, name: normalizedName });
     runAsyncTask('notify_admins_new_registration', () =>
@@ -6651,6 +6671,18 @@ app.post('/api/auth/register', async (req, res) => {
       verificationExpiresAt: verificationResult.expiresAt,
     });
   } catch (error) {
+    console.error('[registration] flow failed', {
+      email: normalizedEmail,
+      role: normalizedRole,
+      error: {
+        name: error && error.name ? error.name : null,
+        message: error && error.message ? error.message : String(error),
+        code: error && error.code ? error.code : null,
+        stack: error && error.stack ? error.stack : null,
+        responseBody: error && (error.responseBody || error.ResponseBody || error.response) ? (error.responseBody || error.ResponseBody || error.response) : null,
+      },
+      rawError: error,
+    });
     logCaughtException('registration flow', error, {
       email: normalizedEmail,
       role: normalizedRole,

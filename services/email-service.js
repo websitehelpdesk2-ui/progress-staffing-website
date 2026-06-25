@@ -18,6 +18,18 @@ function normalizeAddresses(to) {
   return single ? [single] : [];
 }
 
+function serializePostmarkError(error) {
+  if (!error) return null;
+  return {
+    name: error.name || null,
+    message: error.message || String(error),
+    code: error.code || null,
+    statusCode: error.statusCode || error.status || null,
+    responseBody: error.responseBody || error.ResponseBody || error.response || null,
+    stack: error.stack || null,
+  };
+}
+
 async function sendNotificationEmail(options = {}) {
   const toAddresses = normalizeAddresses(options.to);
   const subject = String(options.subject || '').trim();
@@ -71,7 +83,8 @@ async function sendNotificationEmail(options = {}) {
   } catch (error) {
     console.error('Postmark send failed:', {
       ...logDetails,
-      error: error && error.message ? error.message : String(error),
+      error: serializePostmarkError(error),
+      rawError: error,
     });
     throw error;
   }

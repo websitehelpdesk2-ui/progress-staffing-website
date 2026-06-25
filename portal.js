@@ -2088,18 +2088,24 @@ function renderJobsiteContracts(data) {
 async function loadJobsiteContracts() {
   const tbody = document.getElementById('jobsiteContractsTbody');
   if (!tbody) return;
-  const res = await apiFetch('/api/portal/jobsite/contracts');
-  if (!res.ok) {
+  try {
+    const res = await apiFetch('/api/portal/jobsite/contracts');
+    if (!res.ok) {
+      setTableRows('jobsiteContractsTbody', [], 6, 'Unable to load contracts right now.');
+      return;
+    }
+    const payload = await res.json().catch(() => ({}));
+    renderJobsiteContracts(Array.isArray(payload.data) ? payload.data : []);
+  } catch (error) {
+    console.warn('[jobsite-dashboard] contracts load failed', error);
     setTableRows('jobsiteContractsTbody', [], 6, 'Unable to load contracts right now.');
-    return;
   }
-  const payload = await res.json().catch(() => ({}));
-  renderJobsiteContracts(Array.isArray(payload.data) ? payload.data : []);
 }
 
 async function apiFetch(url, options = {}) {
   const token = options._omitStoredToken ? null : getToken();
   const headers = Object.assign({}, options.headers || {});
+  const pageType = String(document.body?.dataset?.portalPage || '').trim().toLowerCase();
 
   if (token) {
     headers.Authorization = `Bearer ${token}`;
@@ -2119,7 +2125,9 @@ async function apiFetch(url, options = {}) {
   if (res.status === 401 && !options._skipAuthRedirect) {
     clearToken();
     window.location.href = buildPortalLoginRedirectPath(getCurrentPortalRelativeUrl(), { reason: 'session_expired' });
-    // Return a never-resolving promise so callers don't run their error path
+    if (pageType === 'jobsite') {
+      throw new Error('Session expired. Please sign in again.');
+    }
     return new Promise(() => {});
   }
 
@@ -4650,14 +4658,19 @@ async function loadJobsiteOpenShifts() {
   const openShiftsEl = document.getElementById('jobsiteOpenShifts');
   if (!openShiftsEl) return;
 
-  const res = await apiFetch('/api/shifts/open');
-  if (!res.ok) {
-    setTableRows('jobsiteOpenShifts', [], 4, 'Unable to load open shifts right now.');
-    return;
-  }
+  try {
+    const res = await apiFetch('/api/shifts/open');
+    if (!res.ok) {
+      setTableRows('jobsiteOpenShifts', [], 4, 'Unable to load open shifts right now.');
+      return;
+    }
 
-  const payload = await res.json();
-  renderJobsiteOpenShifts(payload);
+    const payload = await res.json().catch(() => ({}));
+    renderJobsiteOpenShifts(payload);
+  } catch (error) {
+    console.warn('[jobsite-dashboard] open shifts load failed', error);
+    setTableRows('jobsiteOpenShifts', [], 4, 'Unable to load open shifts right now.');
+  }
 }
 
 async function loadEmployeeShiftData() {
@@ -5286,10 +5299,18 @@ function showJobsiteTimesheetReview(ts) {
 }
 
 async function loadJobsiteTimesheets() {
-  const res = await apiFetch('/api/portal/jobsite/timesheets');
-  if (!res.ok) return;
-  const data = await res.json().catch(() => ({}));
-  renderJobsiteTimesheets(data);
+  try {
+    const res = await apiFetch('/api/portal/jobsite/timesheets');
+    if (!res.ok) {
+      setTableRows('jobsiteTimesheetsTbody', [], 8, 'Unable to load timesheets right now.');
+      return;
+    }
+    const data = await res.json().catch(() => ({}));
+    renderJobsiteTimesheets(data);
+  } catch (error) {
+    console.warn('[jobsite-dashboard] timesheets load failed', error);
+    setTableRows('jobsiteTimesheetsTbody', [], 8, 'Unable to load timesheets right now.');
+  }
 }
 
 async function loadEmployeePortalData(currentUser) {
@@ -8861,20 +8882,44 @@ function bindEmployeeForms(currentUser) {
 }
 
 async function loadJobsiteDashboard(user) {
-  const res = await apiFetch('/api/portal/jobsite/dashboard');
-  if (!res.ok) {
-    redirectToUserHome(user, 'loadJobsiteDashboard', { status: res.status });
+  const fallbackData = {
+    user: user || {},
+    profile: { industryTrack: getJobsiteIndustryTrack(user && user.id ? user.id : null) },
+    jobs: [],
+    assignments: [],
+    workerDocuments: [],
+    workerComplianceForms: [],
+  };
+
+  try {
+    const res = await apiFetch('/api/portal/jobsite/dashboard');
+    if (!res.ok) {
+      redirectToUserHome(user, 'loadJobsiteDashboard', { status: res.status });
+      renderJobsiteDashboard(fallbackData);
+      return;
+    }
+
+    const data = await res.json().catch(() => ({}));
+    renderJobsiteDashboard(data);
+  } catch (error) {
+    console.warn('[jobsite-dashboard] dashboard load failed', error);
+    renderJobsiteDashboard(fallbackData);
     return;
   }
-  const data = await res.json();
-  renderJobsiteDashboard(data);
-  await Promise.all([
+
+  await Promise.allSettled([
     loadJobsiteOpenShifts(),
     loadJobsiteTimesheets(),
     loadJobsiteContracts(),
   ]);
-  const miscDocs = await loadJobsiteMiscDocs();
-  renderJobsiteMiscDocs(miscDocs);
+
+  try {
+    const miscDocs = await loadJobsiteMiscDocs();
+    renderJobsiteMiscDocs(miscDocs);
+  } catch (error) {
+    console.warn('[jobsite-dashboard] misc docs load failed', error);
+    renderJobsiteMiscDocs([]);
+  }
 }
 
 async function loadAdminDashboard(user) {

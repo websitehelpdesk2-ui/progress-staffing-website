@@ -2102,6 +2102,8 @@ async function loadJobsiteContracts() {
   }
 }
 
+window.loadJobsiteContracts = loadJobsiteContracts;
+
 async function apiFetch(url, options = {}) {
   const token = options._omitStoredToken ? null : getToken();
   const headers = Object.assign({}, options.headers || {});

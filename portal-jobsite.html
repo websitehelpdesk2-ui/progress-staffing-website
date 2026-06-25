@@ -639,6 +639,10 @@
         const section = document.getElementById(sectionId);
         if (section) section.hidden = false;
 
+        if (sectionId === 'jobsiteContractsSection' && typeof window.loadJobsiteContracts === 'function') {
+          window.loadJobsiteContracts();
+        }
+
         if (typeof window.openPortalDrawerById === 'function') {
           window.openPortalDrawerById(sectionId);
           return;

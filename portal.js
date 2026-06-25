@@ -10453,7 +10453,77 @@ function bindJobsiteForms(currentUser) {
       if (!reviewBtn) return;
       const contractId = asInt(reviewBtn.dataset.jobsiteContractReviewId);
       if (!Number.isInteger(contractId) || contractId < 1) return;
-      await openJobsiteContractReviewById(contractId);
+
+      // Resolve contract from cache or API
+      let contract = jobsiteContractsCache.find((item) => Number(item.id) === contractId);
+      if (!contract) {
+        try {
+          const res = await apiFetch('/api/portal/jobsite/contracts');
+          if (!res.ok) return;
+          const payload = await res.json().catch(() => ({}));
+          jobsiteContractsCache = Array.isArray(payload.data) ? payload.data : [];
+          contract = jobsiteContractsCache.find((item) => Number(item.id) === contractId);
+        } catch { return; }
+      }
+      if (!contract) return;
+
+      // Scope all element lookups to the section to be safe regardless of DOM position
+      const sec = contractsSectionEl;
+      const reviewPanel = sec.querySelector('#jobsiteContractReviewPanel');
+      if (!reviewPanel) return;
+      const reviewMsg    = sec.querySelector('#jobsiteContractReviewMessage');
+      const reviewMeta   = sec.querySelector('#jobsiteContractReviewMeta');
+      const viewLink     = sec.querySelector('#jobsiteContractViewLink');
+      const downloadBtn  = sec.querySelector('#jobsiteContractDownloadBtn');
+      const sigPreview   = sec.querySelector('#jobsiteContractSignaturePreview');
+      const signBtn      = sec.querySelector('#jobsiteContractSignBtn');
+      const declineBtn   = sec.querySelector('#jobsiteContractDeclineBtn');
+      const withdrawBtn  = sec.querySelector('#jobsiteContractWithdrawBtn');
+      const sigInput     = sec.querySelector('#jobsiteContractSignature');
+      const authInput    = sec.querySelector('#jobsiteContractAuthorize');
+      const reasonInput  = sec.querySelector('#jobsiteContractDeclineReason');
+      const credInput    = sec.querySelector('#jobsiteContractWithdrawCredential');
+
+      if (!reviewMeta || !viewLink || !signBtn || !declineBtn || !withdrawBtn) return;
+
+      if (reviewMsg) hideMessage(reviewMsg);
+      const status  = String(contract.status || 'pending');
+      const fileUrl = String(contract.fileUrl || `/api/contracts/${contract.id}/file`);
+      let renewalInfo = '';
+      if (contract.renewalDueAt) renewalInfo = ` | Renewal Due: ${escapeHtml(formatDateOnly(contract.renewalDueAt))}`;
+      reviewMeta.innerHTML = `Facility: ${escapeHtml(contract.clientCompanyName || contract.clientContactName || contract.clientUserName || 'Facility')} | Status: ${statusBadge(status)} | Viewed: ${contract.clientOpenedAt ? escapeHtml(formatDateTime(contract.clientOpenedAt)) : 'No'} | Admin Signed: ${contract.adminSignedAt ? escapeHtml(formatDateTime(contract.adminSignedAt)) : 'No'}${renewalInfo}`;
+      viewLink.href = fileUrl;
+      viewLink.dataset.contractId = String(contract.id);
+      if (downloadBtn) {
+        downloadBtn.href = fileUrl;
+        downloadBtn.dataset.contractId = String(contract.id);
+        downloadBtn.style.display = status === 'executed' ? '' : 'none';
+      }
+      if (sigPreview) sigPreview.innerHTML = renderContractSignaturePreview(contract);
+      signBtn.dataset.contractId   = String(contract.id);
+      declineBtn.dataset.contractId = String(contract.id);
+      withdrawBtn.dataset.contractId = String(contract.id);
+      if (sigInput)    sigInput.value = '';
+      if (authInput)   authInput.checked = false;
+      if (reasonInput) reasonInput.value = '';
+      if (credInput)   credInput.value = '';
+      signBtn.style.display    = status === 'pending' && !contract.clientSignedAt ? '' : 'none';
+      declineBtn.style.display = status === 'pending' ? '' : 'none';
+      withdrawBtn.style.display = status === 'pending' ? '' : 'none';
+
+      const cancelPanel     = sec.querySelector('#jobsiteContractCancelPanel');
+      const cancelSubmitBtn = sec.querySelector('#jobsiteContractCancelSubmitBtn');
+      const cancelReason    = sec.querySelector('#jobsiteContractCancelReason');
+      const cancelSig       = sec.querySelector('#jobsiteContractCancelSignature');
+      if (cancelPanel) {
+        cancelPanel.style.display = status === 'executed' ? '' : 'none';
+        if (cancelSubmitBtn) cancelSubmitBtn.dataset.contractId = String(contract.id);
+        if (cancelReason) cancelReason.value = '';
+        if (cancelSig)    cancelSig.value = '';
+      }
+
+      reviewPanel.style.display = 'block';
+      reviewPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
   }
 

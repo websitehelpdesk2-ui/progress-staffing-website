@@ -1951,10 +1951,41 @@ function renderAdminMiscDocsTable(items) {
     if (section) section.hidden = (items || []).length === 0;
   }
 
+  function contractSignaturePreviewCard(title, name, signedAt) {
+    const hasSignature = Boolean(name && signedAt);
+    return `
+      <div class="contract-signature-card">
+        <div class="contract-signature-card__title">${escapeHtml(title)}</div>
+        <div class="contract-signature-card__name">${hasSignature ? escapeHtml(name) : 'Awaiting signature'}</div>
+        <div class="contract-signature-card__meta">${hasSignature ? escapeHtml(formatDateTime(signedAt)) : 'Not signed yet'}</div>
+      </div>
+    `;
+  }
+
+  function renderContractSignaturePreview(contract) {
+    const status = String(contract && contract.status || 'pending').toLowerCase();
+    const executedNote = contract && contract.executedAt
+      ? `Executed: ${escapeHtml(formatDateTime(contract.executedAt))}`
+      : 'Executed PDF will appear after both signatures are recorded.';
+
+    return `
+      <div class="contract-signature-preview">
+        <div class="contract-signature-preview__header">Electronic Signatures</div>
+        <div class="contract-signature-preview__grid">
+          ${contractSignaturePreviewCard('Client', contract && contract.clientSignatureName, contract && contract.clientSignedAt)}
+          ${contractSignaturePreviewCard('Administrator', contract && contract.adminSignatureName, contract && contract.adminSignedAt)}
+        </div>
+        <p class="contract-signature-preview__note">${status === 'executed' ? executedNote : 'The fully executed PDF is generated once both signatures are complete.'}</p>
+      </div>
+    `;
+  }
+
 function openAdminContractReview(contract) {
   const section = document.getElementById('adminContractReviewSection');
   const meta = document.getElementById('adminContractReviewMeta');
   const link = document.getElementById('adminContractReviewFileLink');
+  const downloadBtn = document.getElementById('adminContractExecutedDownloadBtn');
+  const preview = document.getElementById('adminContractSignaturePreview');
   const signBtn = document.getElementById('adminContractSignBtn');
   const msg = document.getElementById('adminContractReviewMessage');
   const signature = document.getElementById('adminContractSignature');
@@ -1970,6 +2001,11 @@ function openAdminContractReview(contract) {
   const trackSaveBtn = document.getElementById('adminContractIndustryTrackSaveBtn');
   if (trackSaveBtn) trackSaveBtn.dataset.contractId = String(contract.id || '');
   link.href = String(contract.fileUrl || '#');
+  if (downloadBtn) {
+    downloadBtn.href = String(contract.fileUrl || '#');
+    downloadBtn.style.display = contractStatus === 'executed' ? '' : 'none';
+  }
+  if (preview) preview.innerHTML = renderContractSignaturePreview(contract);
   const trackLabel = String(contract.industryTrack || 'warehouse').toLowerCase() === 'healthcare' ? 'Healthcare' : 'Warehouse';
   let renewalLine = contract.renewalDueAt ? ` | Renewal Due: ${escapeHtml(formatDateOnly(contract.renewalDueAt))}` : '';
   meta.innerHTML = `Client: ${escapeHtml(contract.clientCompanyName || contract.clientUserName || 'Client')} | Track: ${escapeHtml(trackLabel)} | Status: ${statusBadge(contractStatus)} | Client Signed: ${contract.clientSignedAt ? escapeHtml(formatDateTime(contract.clientSignedAt)) : 'No'}${renewalLine}`;
@@ -3480,6 +3516,8 @@ async function openJobsiteContractReviewById(contractId) {
   const contractReviewMsg = document.getElementById('jobsiteContractReviewMessage');
   const contractReviewMeta = document.getElementById('jobsiteContractReviewMeta');
   const contractViewLink = document.getElementById('jobsiteContractViewLink');
+  const contractDownloadBtn = document.getElementById('jobsiteContractDownloadBtn');
+  const contractSignaturePreview = document.getElementById('jobsiteContractSignaturePreview');
   const contractSignBtn = document.getElementById('jobsiteContractSignBtn');
   const contractDeclineBtn = document.getElementById('jobsiteContractDeclineBtn');
   const contractWithdrawBtn = document.getElementById('jobsiteContractWithdrawBtn');
@@ -3498,6 +3536,11 @@ async function openJobsiteContractReviewById(contractId) {
   }
   contractReviewMeta.innerHTML = `Facility: ${escapeHtml(contract.clientCompanyName || contract.clientContactName || contract.clientUserName || 'Facility')} | Status: ${statusBadge(status)} | Viewed: ${contract.clientOpenedAt ? escapeHtml(formatDateTime(contract.clientOpenedAt)) : 'No'} | Admin Signed: ${contract.adminSignedAt ? escapeHtml(formatDateTime(contract.adminSignedAt)) : 'No'}${renewalInfo}`;
   contractViewLink.href = String(contract.fileUrl || '#');
+  if (contractDownloadBtn) {
+    contractDownloadBtn.href = String(contract.fileUrl || '#');
+    contractDownloadBtn.style.display = status === 'executed' ? '' : 'none';
+  }
+  if (contractSignaturePreview) contractSignaturePreview.innerHTML = renderContractSignaturePreview(contract);
   contractSignBtn.dataset.contractId = String(contract.id);
   contractDeclineBtn.dataset.contractId = String(contract.id);
   contractWithdrawBtn.dataset.contractId = String(contract.id);

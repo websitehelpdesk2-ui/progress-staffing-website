@@ -365,6 +365,7 @@ CREATE TABLE IF NOT EXISTS contracts (
   uploadedByAdminUserId BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   originalName TEXT NOT NULL,
   storedName TEXT NOT NULL,
+  executedStoredName TEXT,
   mimeType TEXT NOT NULL,
   fileSize BIGINT NOT NULL,
   status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'executed', 'declined', 'withdrawn', 'withdrawal_pending', 'renewal_pending', 'cancelled', 'expired')),
@@ -523,6 +524,7 @@ const POSTGRES_SAFE_MIGRATIONS = [
   'ALTER TABLE jobsite_profiles ADD COLUMN IF NOT EXISTS city TEXT',
   'ALTER TABLE jobsite_profiles ADD COLUMN IF NOT EXISTS state TEXT',
   'ALTER TABLE jobsite_profiles ADD COLUMN IF NOT EXISTS zip TEXT',
+  'ALTER TABLE contracts ADD COLUMN IF NOT EXISTS executedStoredName TEXT',
 ];
 
 module.exports = {

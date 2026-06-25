@@ -32,6 +32,7 @@ const {
   storeUploadedFile,
 } = require('./storage/file-storage');
 const yazl = require('yazl');
+const { PDFDocument, StandardFonts } = require('pdf-lib');
 
 const app = express();
 const server = http.createServer(app);
@@ -584,6 +585,184 @@ function removeStoredFileLater(storedName) {
   deleteStoredFile(normalized).catch(() => {});
 }
 
+async function storedFileExists(storedName) {
+  const normalized = String(storedName || '').trim();
+  if (!normalized) return false;
+  try {
+    await fs.promises.access(resolveStoredFilePath(normalized), fs.constants.F_OK | fs.constants.R_OK);
+    return true;
+  } catch (_error) {
+    return false;
+  }
+}
+
+async function readStoredFileBuffer(storedName) {
+  const normalized = String(storedName || '').trim();
+  if (!normalized) {
+    const error = new Error('Stored file not found.');
+    error.code = 'ENOENT';
+    throw error;
+  }
+
+  const fullPath = resolveStoredFilePath(normalized);
+  try {
+    await fs.promises.access(fullPath, fs.constants.F_OK | fs.constants.R_OK);
+  } catch (error) {
+    error.code = 'ENOENT';
+    throw error;
+  }
+
+  return fs.promises.readFile(fullPath);
+}
+
+function deriveExecutedStoredName(storedName) {
+  const normalized = String(storedName || '').replace(/\\/g, '/').trim();
+  if (!normalized) return '';
+  const ext = path.extname(normalized) || '.pdf';
+  return `${normalized.slice(0, Math.max(0, normalized.length - ext.length))}-executed${ext}`;
+}
+
+function deriveExecutedDownloadName(originalName) {
+  const normalized = String(originalName || 'Contract.pdf').trim() || 'Contract.pdf';
+  const ext = path.extname(normalized);
+  if (!ext) {
+    return `${normalized}-executed.pdf`;
+  }
+  return `${normalized.slice(0, Math.max(0, normalized.length - ext.length))}-executed${ext}`;
+}
+
+function formatExecutedDate(value) {
+  const date = value ? new Date(value) : new Date();
+  if (Number.isNaN(date.getTime())) return 'Unknown';
+  return date.toLocaleString('en-US', {
+    month: 'short',
+    day: '2-digit',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+function drawWrappedText(page, text, options) {
+  const { x, y, width, font, size, lineHeight } = options;
+  const words = String(text || '').split(/\s+/).filter(Boolean);
+  const lines = [];
+  let currentLine = '';
+
+  words.forEach((word) => {
+    const nextLine = currentLine ? `${currentLine} ${word}` : word;
+    const nextWidth = font.widthOfTextAtSize(nextLine, size);
+    if (nextWidth > width && currentLine) {
+      lines.push(currentLine);
+      currentLine = word;
+      return;
+    }
+    currentLine = nextLine;
+  });
+
+  if (currentLine) lines.push(currentLine);
+
+  lines.forEach((line, index) => {
+    page.drawText(line, { x, y: y - (index * lineHeight), size, font });
+  });
+
+  return y - (Math.max(lines.length, 1) * lineHeight);
+}
+
+async function buildExecutedContractPdfBuffer(contract, executedAtDate) {
+  const originalBuffer = await readStoredFileBuffer(contract.storedName);
+  const pdfDoc = await PDFDocument.load(originalBuffer);
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const page = pdfDoc.addPage([612, 792]);
+  const { width, height } = page.getSize();
+  const margin = 48;
+  let cursorY = height - margin;
+
+  page.drawText('Executed Contract Certificate', {
+    x: margin,
+    y: cursorY,
+    size: 20,
+    font: boldFont,
+  });
+  cursorY -= 32;
+
+  page.drawText('This certificate records the electronic signatures applied through the portal.', {
+    x: margin,
+    y: cursorY,
+    size: 10.5,
+    font,
+  });
+  cursorY -= 22;
+
+  const trackLabel = String(contract.industryTrack || 'warehouse').toLowerCase() === 'healthcare' ? 'Healthcare' : 'Warehouse';
+  const fieldWidth = width - (margin * 2);
+  const details = [
+    ['Contract', contract.originalName || 'Contract'],
+    ['Client', contract.clientCompanyName || contract.clientContactName || contract.clientUserName || 'Client'],
+    ['Industry Track', trackLabel],
+    ['Status', 'Executed'],
+    ['Client Signature', contract.clientSignatureName || 'Not recorded'],
+    ['Client Signed At', formatExecutedDate(contract.clientSignedAt)],
+    ['Administrator Signature', contract.adminSignatureName || 'Not recorded'],
+    ['Administrator Signed At', formatExecutedDate(contract.adminSignedAt)],
+    ['Executed At', formatExecutedDate(executedAtDate || contract.executedAt || contract.adminSignedAt)],
+  ];
+
+  details.forEach(([label, value]) => {
+    page.drawText(`${label}:`, {
+      x: margin,
+      y: cursorY,
+      size: 11,
+      font: boldFont,
+    });
+    cursorY = drawWrappedText(page, String(value || '—'), {
+      x: margin + 132,
+      y: cursorY,
+      width: fieldWidth - 132,
+      font,
+      size: 11,
+      lineHeight: 14,
+    }) - 10;
+  });
+
+  page.drawText('Signature certificate generated by the Progress Staffing Agency portal.', {
+    x: margin,
+    y: 72,
+    size: 9,
+    font,
+  });
+
+  return pdfDoc.save();
+}
+
+async function createOrRefreshExecutedContract(contract, executedAtDate) {
+  const executedStoredName = String(contract.executedStoredName || '').trim() || deriveExecutedStoredName(contract.storedName);
+  if (!executedStoredName) {
+    throw new Error('Unable to derive executed contract file name.');
+  }
+
+  const buffer = await buildExecutedContractPdfBuffer(contract, executedAtDate);
+  const fullPath = resolveStoredFilePath(executedStoredName);
+  await fs.promises.mkdir(path.dirname(fullPath), { recursive: true });
+  await fs.promises.writeFile(fullPath, Buffer.from(buffer));
+  return executedStoredName;
+}
+
+async function ensureExecutedContractArtifact(contract) {
+  if (!contract || String(contract.status || '').toLowerCase() !== 'executed') return null;
+  const currentStoredName = String(contract.executedStoredName || '').trim();
+  if (currentStoredName && await storedFileExists(currentStoredName)) {
+    return currentStoredName;
+  }
+
+  const executedStoredName = await createOrRefreshExecutedContract(contract, contract.executedAt || contract.adminSignedAt || new Date());
+  if (contract.id) {
+    db.prepare('UPDATE contracts SET executedStoredName = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?').run(executedStoredName, contract.id);
+  }
+  return executedStoredName;
+}
+
 async function sendStoredAsset(res, storedName, options = {}) {
   console.log('[sendStoredAsset] start', { storedName, hasMissingMessage: !!options.missingMessage });
   try {
@@ -979,6 +1158,7 @@ function initDatabase() {
       uploadedByAdminUserId INTEGER NOT NULL,
       originalName TEXT NOT NULL,
       storedName TEXT NOT NULL,
+      executedStoredName TEXT,
       mimeType TEXT NOT NULL,
       fileSize INTEGER NOT NULL,
       status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'executed', 'declined', 'withdrawn', 'withdrawal_pending', 'cancelled', 'expired')),
@@ -5295,6 +5475,7 @@ function initializeSqliteStartupState() {
   ensureColumn('contracts', 'clientAuthorized', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn('contracts', 'adminSignedAt', 'DATETIME');
   ensureColumn('contracts', 'adminSignatureName', 'TEXT');
+  ensureColumn('contracts', 'executedStoredName', 'TEXT');
   ensureColumn('contracts', 'adminAuthorized', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn('contracts', 'declinedAt', 'DATETIME');
   ensureColumn('contracts', 'declinedReason', 'TEXT');
@@ -5477,7 +5658,6 @@ app.get('/portal-register', (req, res) => {
 
   res.sendFile(path.join(__dirname, 'portal-register.html'));
 });
-
 app.get('/portal-register-employee', (req, res) => {
   res.sendFile(path.join(__dirname, 'portal-register-employee.html'));
 });
@@ -12881,12 +13061,34 @@ app.get('/api/contracts/:id/file', authGuard(['admin', 'jobsite']), async (req, 
     db.prepare('UPDATE contracts SET clientOpenedAt = COALESCE(clientOpenedAt, CURRENT_TIMESTAMP), updatedAt = CURRENT_TIMESTAMP WHERE id = ?').run(contractId);
   }
 
-  return sendStoredAsset(res, contract.storedName, {
-    contentType: contract.mimeType,
-    disposition: 'attachment',
-    downloadName: contract.originalName || 'Contract.pdf',
-    missingMessage: 'Contract file is missing from storage.',
-  });
+  let downloadStoredName = contract.storedName;
+  if (String(contract.status || '').toLowerCase() === 'executed') {
+    try {
+      downloadStoredName = await ensureExecutedContractArtifact(contract) || contract.storedName;
+    } catch (error) {
+      logCaughtException('contract executed file preparation', error, { contractId });
+      return res.status(500).json({ error: 'Unable to prepare the executed contract download.' });
+    }
+  }
+
+  const candidates = String(contract.status || '').toLowerCase() === 'executed'
+    ? [downloadStoredName, contract.storedName]
+    : [contract.storedName];
+
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    if (!(await storedFileExists(candidate))) continue;
+    return sendStoredAsset(res, candidate, {
+      contentType: contract.mimeType,
+      disposition: 'attachment',
+      downloadName: String(contract.status || '').toLowerCase() === 'executed'
+        ? deriveExecutedDownloadName(contract.originalName || 'Contract.pdf')
+        : contract.originalName || 'Contract.pdf',
+      missingMessage: 'Contract file is missing from storage.',
+    });
+  }
+
+  return res.status(404).json({ error: 'Contract file is missing from storage.' });
 });
 
 app.get('/api/portal/jobsite/contracts', authGuard(['jobsite']), (req, res) => {
@@ -12981,7 +13183,7 @@ app.post('/api/portal/jobsite/contracts/:id/sign', authGuard(['jobsite']), (req,
   return res.json({ signed: true });
 });
 
-app.post('/api/admin/contracts/:id/sign', authGuard(['admin']), (req, res) => {
+app.post('/api/admin/contracts/:id/sign', authGuard(['admin']), async (req, res) => {
   const contractId = Number(req.params.id);
   const signature = String(req.body && req.body.signatureName || '').trim();
   const authorized = Number(req.body && req.body.authorized ? 1 : 0);
@@ -13009,6 +13211,22 @@ app.post('/api/admin/contracts/:id/sign', authGuard(['admin']), (req, res) => {
   const executedAtDate = new Date();
   const renewalDueDate = new Date(executedAtDate);
   renewalDueDate.setFullYear(renewalDueDate.getFullYear() + 1);
+  const executedContractData = {
+    ...contract,
+    adminSignatureName: signature,
+    adminSignedAt: executedAtDate.toISOString(),
+    executedAt: executedAtDate.toISOString(),
+    status: 'executed',
+  };
+  let executedStoredName = String(contract.executedStoredName || '').trim();
+
+  try {
+    executedStoredName = await createOrRefreshExecutedContract(executedContractData, executedAtDate);
+  } catch (error) {
+    logCaughtException('admin contract executed pdf generation', error, { contractId, jobsiteUserId: contract.jobsiteUserId });
+    return res.status(500).json({ error: 'Contract was signed, but the executed PDF could not be generated.' });
+  }
+
   db.prepare(
     `UPDATE contracts
      SET adminSignedAt = CURRENT_TIMESTAMP,
@@ -13016,13 +13234,14 @@ app.post('/api/admin/contracts/:id/sign', authGuard(['admin']), (req, res) => {
          adminAuthorized = 1,
          status = 'executed',
          executedAt = ?,
+         executedStoredName = ?,
          renewalDueAt = ?,
          renewalNotifiedAt = NULL,
          renewalClientDecision = NULL,
          renewalAdminDecision = NULL,
          updatedAt = CURRENT_TIMESTAMP
      WHERE id = ?`
-  ).run(signature, executedAtDate.toISOString(), renewalDueDate.toISOString(), contractId);
+  ).run(signature, executedAtDate.toISOString(), executedStoredName, renewalDueDate.toISOString(), contractId);
 
   markNotificationsCompletedByTask('contract_admin_sign', contractId);
   runAsyncTask('notify_contract_executed_admins', () =>
@@ -13042,7 +13261,7 @@ app.post('/api/admin/contracts/:id/sign', authGuard(['admin']), (req, res) => {
 
   emitContractsDomainSyncToAdmins();
 
-  return res.json({ executed: true });
+  return res.json({ executed: true, executedStoredName });
 });
 
 app.post('/api/portal/jobsite/contracts/:id/decline', authGuard(['jobsite']), (req, res) => {
